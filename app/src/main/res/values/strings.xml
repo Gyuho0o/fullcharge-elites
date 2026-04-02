@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">완충 전우회</string>
+    <string name="app_subtitle">100% Survival</string>
+
+    <!-- Gatekeeper Messages -->
+    <string name="welcome_elite">입장 준비 완료</string>
+    <string name="not_worthy">배터리가 부족하시네요</string>
+    <string name="plug_in_required">100%%까지 충전 후 충전기를 빼세요</string>
+    <string name="charging_progress">충전 중... %1$d%%</string>
+
+    <!-- Chat Messages -->
+    <string name="chat_room_title">완충 전우회</string>
+    <string name="chat_hint">메시지를 입력하세요</string>
+    <string name="send">전송</string>
+
+    <!-- Exile Messages -->
+    <string name="exile_title">서바이벌 종료</string>
+    <string name="exile_message">배터리가 바닥났거나 충전기를 연결했네요</string>
+
+    <!-- Ranks -->
+    <string name="rank_newbie">뉴비</string>
+    <string name="rank_newbie_desc">일단 들어오셨군요</string>
+    <string name="rank_private">정회원</string>
+    <string name="rank_private_desc">제법인데요?</string>
+    <string name="rank_sergeant">터줏대감</string>
+    <string name="rank_sergeant_desc">배터리 관리의 달인</string>
+    <string name="rank_god">전설</string>
+    <string name="rank_god_desc">어떻게 버틴 거예요?</string>
+
+    <!-- Service -->
+    <string name="notification_channel_name">서바이벌 모니터링</string>
+    <string name="notification_channel_desc">배터리 상태를 확인합니다</string>
+    <string name="notification_title">완충 전우회</string>
+    <string name="notification_text">%1$s · 서바이벌 중</string>
+
+    <!-- Misc -->
+    <string name="enter_portal">입장하기</string>
+    <string name="current_elites">지금 %1$d명이 서바이벌 중</string>
+    <string name="anonymous">익명의 서바이버</string>
+</resources>

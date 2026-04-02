@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Primary Colors - Black & Gold Theme -->
+    <color name="elite_black">#0D0D0D</color>
+    <color name="elite_black_light">#1A1A1A</color>
+    <color name="elite_black_surface">#252525</color>
+
+    <color name="elite_gold">#FFD700</color>
+    <color name="elite_gold_light">#FFE55C</color>
+    <color name="elite_gold_dark">#B8860B</color>
+
+    <!-- Status Colors -->
+    <color name="unworthy_gray">#4A4A4A</color>
+    <color name="unworthy_text">#808080</color>
+
+    <color name="exile_red">#FF3333</color>
+
+    <!-- Text Colors -->
+    <color name="text_primary">#FFFFFF</color>
+    <color name="text_secondary">#B0B0B0</color>
+    <color name="text_gold">#FFD700</color>
+
+    <!-- Gradient Colors -->
+    <color name="gradient_gold_start">#FFD700</color>
+    <color name="gradient_gold_end">#B8860B</color>
+
+    <!-- Toss Blue Theme -->
+    <color name="toss_blue">#3182F6</color>
+    <color name="toss_blue_dark">#1B64DA</color>
+    <color name="toss_blue_light">#5CA0FF</color>
+    <color name="icon_background">#0A1628</color>
+
+    <!-- Chat Colors -->
+    <color name="chat_bubble_self">#2D2D2D</color>
+    <color name="chat_bubble_other">#1F1F1F</color>
+</resources>

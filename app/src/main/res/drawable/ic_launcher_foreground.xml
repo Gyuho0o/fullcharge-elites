@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- 100% 엘리트 아이콘 (파란색 테마) -->
+    <group
+        android:translateX="24"
+        android:translateY="24">
+
+        <!-- 외곽 원형 테두리 (글로우 효과) -->
+        <path
+            android:fillColor="#5CA0FF"
+            android:fillAlpha="0.3"
+            android:pathData="M30,0 A30,30 0 1,1 30,60 A30,30 0 1,1 30,0"
+            android:strokeWidth="0"/>
+
+        <!-- 메인 원형 테두리 -->
+        <path
+            android:fillColor="@android:color/transparent"
+            android:strokeColor="#3182F6"
+            android:strokeWidth="4"
+            android:pathData="M30,4 A26,26 0 1,1 30,56 A26,26 0 1,1 30,4"/>
+
+        <!-- 100 텍스트 - 1 -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M16,22 L16,38 L20,38 L20,26 L18,28 L16,26 L16,22 Z"/>
+
+        <!-- 100 텍스트 - 첫번째 0 -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M24,22 C24,22 22,22 22,24 L22,36 C22,38 24,38 24,38 L28,38 C28,38 30,38 30,36 L30,24 C30,22 28,22 28,22 L24,22 Z M26,26 L26,34 L26,26 Z"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="0"/>
+
+        <!-- 첫번째 0 내부 (구멍) -->
+        <path
+            android:fillColor="#0A1628"
+            android:pathData="M25,25 L27,25 L27,35 L25,35 Z"/>
+
+        <!-- 100 텍스트 - 두번째 0 -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M34,22 C34,22 32,22 32,24 L32,36 C32,38 34,38 34,38 L38,38 C38,38 40,38 40,36 L40,24 C40,22 38,22 38,22 L34,22 Z"/>
+
+        <!-- 두번째 0 내부 (구멍) -->
+        <path
+            android:fillColor="#0A1628"
+            android:pathData="M35,25 L37,25 L37,35 L35,35 Z"/>
+
+        <!-- % 기호 -->
+        <path
+            android:fillColor="#3182F6"
+            android:pathData="M42,24 A2,2 0 1,1 42,28 A2,2 0 1,1 42,24"/>
+        <path
+            android:fillColor="#3182F6"
+            android:pathData="M42,32 A2,2 0 1,1 42,36 A2,2 0 1,1 42,32"/>
+        <path
+            android:fillColor="#3182F6"
+            android:strokeWidth="1.5"
+            android:pathData="M40,38 L46,22"/>
+
+    </group>
+</vector>
