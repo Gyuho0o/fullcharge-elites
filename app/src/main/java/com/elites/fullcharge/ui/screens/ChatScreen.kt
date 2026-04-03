@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -78,6 +79,7 @@ fun ChatScreen(
     currentUserNickname: String,
     sessionDuration: Long,
     onSendMessage: (String) -> Unit,
+    onLeaveChat: () -> Unit = {},
     onNicknameChange: (String) -> Unit = {},
     onReportMessage: (ChatMessage, String, (Boolean) -> Unit) -> Unit = { _, _, _ -> },
     filterErrorMessage: String? = null,
@@ -90,6 +92,7 @@ fun ChatScreen(
     onVotePoll: (String, Int) -> Unit = { _, _ -> },
     isInDanger: Boolean = false,
     dangerCountdown: Int = 0,
+    bannerAdContent: @Composable () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var messageInput by remember { mutableStateOf("") }
@@ -100,6 +103,7 @@ fun ChatScreen(
     var showNicknameDialog by remember { mutableStateOf(false) }
     var showReportDialog by remember { mutableStateOf(false) }
     var showPollDialog by remember { mutableStateOf(false) }
+    var showLeaveDialog by remember { mutableStateOf(false) }
     var messageToReport by remember { mutableStateOf<ChatMessage?>(null) }
     var newRank by remember { mutableStateOf(EliteRank.TRAINEE) }
     var messageSentTrigger by remember { mutableIntStateOf(0) }
@@ -184,7 +188,8 @@ fun ChatScreen(
                 nickname = currentUserNickname,
                 isLeaderboardExpanded = showLeaderboard,
                 onToggleLeaderboard = { showLeaderboard = !showLeaderboard },
-                onEditNickname = { showNicknameDialog = true }
+                onEditNickname = { showNicknameDialog = true },
+                onLeaveClick = { showLeaveDialog = true }
             )
 
             // 등급까지 남은 시간 (위험 모드일 땐 숨김, 고정 영역)
@@ -297,7 +302,8 @@ fun ChatScreen(
         RankUpCelebration(
             newRank = newRank,
             visible = showRankUpCelebration,
-            onDismiss = { showRankUpCelebration = false }
+            onDismiss = { showRankUpCelebration = false },
+            bannerAdView = bannerAdContent
         )
 
         // 닉네임 수정 다이얼로그
@@ -342,6 +348,17 @@ fun ChatScreen(
                 onCreatePoll = { question, options ->
                     onCreatePoll(question, options)
                     showPollDialog = false
+                }
+            )
+        }
+
+        // 나가기 확인 다이얼로그
+        if (showLeaveDialog) {
+            LeaveConfirmDialog(
+                onDismiss = { showLeaveDialog = false },
+                onConfirm = {
+                    showLeaveDialog = false
+                    onLeaveChat()
                 }
             )
         }
@@ -529,7 +546,8 @@ private fun ChatTopBar(
     nickname: String,
     isLeaderboardExpanded: Boolean,
     onToggleLeaderboard: () -> Unit,
-    onEditNickname: () -> Unit
+    onEditNickname: () -> Unit,
+    onLeaveClick: () -> Unit
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "batteryPulse")
     val batteryAlpha by infiniteTransition.animateFloat(
@@ -562,26 +580,44 @@ private fun ChatTopBar(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
-                    Text(
-                        text = "완충 전우회",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = TextPrimary
-                    )
-                    AnimatedContent(
-                        targetState = userCount,
-                        transitionSpec = {
-                            slideInVertically { -it } + fadeIn() togetherWith
-                                    slideOutVertically { it } + fadeOut()
-                        },
-                        label = "userCount"
-                    ) { count ->
-                        Text(
-                            text = "지금 ${count}명이 풀배터리",
-                            fontSize = 12.sp,
-                            color = TextSecondary
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // 나가기 버튼
+                    IconButton(
+                        onClick = onLeaveClick,
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowBack,
+                            contentDescription = "나가기",
+                            tint = TextSecondary
                         )
+                    }
+
+                    Spacer(modifier = Modifier.width(4.dp))
+
+                    Column {
+                        Text(
+                            text = "완충 전우회",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary
+                        )
+                        AnimatedContent(
+                            targetState = userCount,
+                            transitionSpec = {
+                                slideInVertically { -it } + fadeIn() togetherWith
+                                        slideOutVertically { it } + fadeOut()
+                            },
+                            label = "userCount"
+                        ) { count ->
+                            Text(
+                                text = "지금 ${count}명이 풀배터리",
+                                fontSize = 12.sp,
+                                color = TextSecondary
+                            )
+                        }
                     }
                 }
 
@@ -1321,7 +1357,8 @@ private fun MessageInputBar(
 private fun RankUpCelebration(
     newRank: EliteRank,
     visible: Boolean,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    bannerAdView: @Composable () -> Unit = {}
 ) {
     AnimatedVisibility(
         visible = visible,
@@ -1337,52 +1374,81 @@ private fun RankUpCelebration(
             CelebrationParticles()
             CelebrationLightning()
 
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
+            // 모달 카드
+            Box(
                 modifier = Modifier
+                    .padding(horizontal = 32.dp)
                     .clip(RoundedCornerShape(20.dp))
                     .background(Color.White)
-                    .padding(40.dp)
             ) {
-                Text(
-                    text = "레벨 업!",
-                    fontSize = 16.sp,
-                    color = TextSecondary
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(
-                            Brush.horizontalGradient(
-                                listOf(TossBlueDark, TossBlue, TossBlueLight)
-                            )
-                        )
-                        .padding(horizontal = 24.dp, vertical = 12.dp)
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(24.dp)
                 ) {
+                    // X 버튼 (우측 상단)
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.TopEnd
+                    ) {
+                        IconButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "닫기",
+                                tint = TextTertiary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+
                     Text(
-                        text = newRank.koreanName,
-                        fontSize = 28.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        text = "레벨 업!",
+                        fontSize = 16.sp,
+                        color = TextSecondary
                     )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(
+                                Brush.horizontalGradient(
+                                    listOf(TossBlueDark, TossBlue, TossBlueLight)
+                                )
+                            )
+                            .padding(horizontal = 24.dp, vertical = 12.dp)
+                    ) {
+                        Text(
+                            text = newRank.koreanName,
+                            fontSize = 28.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Text(
+                        text = newRank.description,
+                        fontSize = 14.sp,
+                        color = TextSecondary
+                    )
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    // 배너 광고 영역
+                    bannerAdView()
                 }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Text(
-                    text = newRank.description,
-                    fontSize = 14.sp,
-                    color = TextSecondary
-                )
             }
         }
 
+        // 5초 후 자동 닫힘
         LaunchedEffect(visible) {
             if (visible) {
-                delay(2500)
+                delay(5000)
                 onDismiss()
             }
         }
@@ -2064,6 +2130,40 @@ private fun CreatePollDialog(
                     text = "투표 시작",
                     color = if (isValid) TossBlue else TextTertiary
                 )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("취소", color = TextSecondary)
+            }
+        }
+    )
+}
+
+@Composable
+private fun LeaveConfirmDialog(
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "전우회 나가기",
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Text(
+                text = "정말 나가시겠어요?\n현재 세션 기록은 저장되지 않아요.",
+                fontSize = 14.sp,
+                color = TextSecondary,
+                lineHeight = 20.sp
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text("나가기", color = StatusRed)
             }
         },
         dismissButton = {

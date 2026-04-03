@@ -116,6 +116,12 @@ class MainActivity : ComponentActivity() {
                         uiState = uiState,
                         onEnterPortal = { viewModel.enterChat() },
                         onSendMessage = { viewModel.sendMessage(it) },
+                        onLeaveChat = {
+                            // 광고 표시 후 퇴장 처리
+                            adManager.showInterstitialAd(this@MainActivity) {
+                                viewModel.leaveChat()
+                            }
+                        },
                         onNicknameChange = { viewModel.changeNickname(it) },
                         onReportMessage = { message, reason, onResult ->
                             viewModel.reportMessage(message, reason, onResult)
@@ -137,7 +143,8 @@ class MainActivity : ComponentActivity() {
                             adManager.showInterstitialAd(this@MainActivity) {
                                 viewModel.returnToGatekeeper()
                             }
-                        }
+                        },
+                        bannerAdContent = { adManager.BannerAd() }
                     )
                 }
             }
@@ -149,6 +156,7 @@ class MainActivity : ComponentActivity() {
         uiState: com.elites.fullcharge.ui.MainUiState,
         onEnterPortal: () -> Unit,
         onSendMessage: (String) -> Unit,
+        onLeaveChat: () -> Unit,
         onNicknameChange: (String) -> Unit,
         onReportMessage: (com.elites.fullcharge.data.ChatMessage, String, (Boolean) -> Unit) -> Unit,
         onClearFilterError: () -> Unit,
@@ -157,7 +165,8 @@ class MainActivity : ComponentActivity() {
         onToggleReaction: (String, String) -> Unit,
         onCreatePoll: (String, List<String>) -> Unit,
         onVotePoll: (String, Int) -> Unit,
-        onExileDismiss: () -> Unit
+        onExileDismiss: () -> Unit,
+        bannerAdContent: @Composable () -> Unit
     ) {
         AnimatedContent(
             targetState = uiState.currentScreen,
@@ -202,6 +211,7 @@ class MainActivity : ComponentActivity() {
                         currentUserNickname = uiState.nickname,
                         sessionDuration = uiState.sessionDuration,
                         onSendMessage = onSendMessage,
+                        onLeaveChat = onLeaveChat,
                         onNicknameChange = onNicknameChange,
                         onReportMessage = onReportMessage,
                         filterErrorMessage = uiState.filterErrorMessage,
@@ -213,7 +223,8 @@ class MainActivity : ComponentActivity() {
                         onCreatePoll = onCreatePoll,
                         onVotePoll = onVotePoll,
                         isInDanger = uiState.isInDanger,
-                        dangerCountdown = uiState.dangerCountdown
+                        dangerCountdown = uiState.dangerCountdown,
+                        bannerAdContent = bannerAdContent
                     )
                 }
                 AppScreen.EXILE -> {

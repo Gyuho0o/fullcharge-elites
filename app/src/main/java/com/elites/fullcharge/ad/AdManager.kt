@@ -3,8 +3,16 @@ package com.elites.fullcharge.ad
 import android.app.Activity
 import android.content.Context
 import android.util.Log
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import com.google.android.gms.ads.AdError
 import com.google.android.gms.ads.AdRequest
+import com.google.android.gms.ads.AdSize
+import com.google.android.gms.ads.AdView
 import com.google.android.gms.ads.FullScreenContentCallback
 import com.google.android.gms.ads.LoadAdError
 import com.google.android.gms.ads.interstitial.InterstitialAd
@@ -19,6 +27,8 @@ class AdManager(private val context: Context) {
         private const val TAG = "AdManager"
         // 전면 광고 Ad Unit ID
         private const val INTERSTITIAL_AD_UNIT_ID = "ca-app-pub-8531357339200043/5244697823"
+        // 배너 광고 Ad Unit ID
+        private const val BANNER_AD_UNIT_ID = "ca-app-pub-8531357339200043/4344018426"
 
         // 광고 활성화 여부 (false로 설정하면 광고 없이 바로 다음 화면으로)
         private const val ADS_ENABLED = true
@@ -114,4 +124,25 @@ class AdManager(private val context: Context) {
      * 광고가 준비되었는지 확인
      */
     fun isAdReady(): Boolean = ADS_ENABLED && interstitialAd != null
+
+    /**
+     * 배너 광고 Composable
+     */
+    @Composable
+    fun BannerAd(modifier: Modifier = Modifier) {
+        if (!ADS_ENABLED) return
+
+        AndroidView(
+            modifier = modifier
+                .fillMaxWidth()
+                .height(50.dp),
+            factory = { ctx ->
+                AdView(ctx).apply {
+                    setAdSize(AdSize.BANNER)
+                    adUnitId = BANNER_AD_UNIT_ID
+                    loadAd(AdRequest.Builder().build())
+                }
+            }
+        )
+    }
 }

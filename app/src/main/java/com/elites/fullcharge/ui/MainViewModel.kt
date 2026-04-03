@@ -55,6 +55,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var sessionTimerJob: Job? = null
     private var batteryMonitorJob: Job? = null
     private var dangerCountdownJob: Job? = null
+    private var activityUpdateJob: Job? = null
 
     // 도배 방지용
     private var lastSentMessage: String = ""
@@ -205,6 +206,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             // 배터리 모니터링 강화
             startBatteryMonitoring()
+
+            // 활동 시간 주기적 업데이트 (온라인 상태 유지)
+            startActivityUpdate()
         }
     }
 
@@ -261,6 +265,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             while (_uiState.value.isInChat) {
                 updateBatteryStatus()
                 delay(500) // 0.5초마다 배터리 체크
+            }
+        }
+    }
+
+    private fun startActivityUpdate() {
+        activityUpdateJob?.cancel()
+        activityUpdateJob = viewModelScope.launch {
+            while (_uiState.value.isInChat) {
+                // 30초마다 활동 시간 업데이트
+                chatRepository.updateUserActivity(_uiState.value.userId)
+                delay(30_000)
             }
         }
     }
@@ -460,6 +475,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val state = _uiState.value
 
+            // 퇴장 알림 시스템 메시지 전송
+            chatRepository.sendSystemMessage("${state.nickname}님이 퇴장했습니다")
+
             // Firebase에서 퇴장 처리
             chatRepository.leaveChat(state.userId)
 
@@ -469,11 +487,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             // 타이머 정지
             sessionTimerJob?.cancel()
             batteryMonitorJob?.cancel()
+            dangerCountdownJob?.cancel()
+            activityUpdateJob?.cancel()
 
             _uiState.update {
                 it.copy(
                     currentScreen = AppScreen.GATEKEEPER,
                     isInChat = false,
+                    isInDanger = false,
+                    dangerCountdown = 0,
                     messages = emptyList(),
                     sessionStartTime = 0L,
                     sessionDuration = 0L
@@ -506,5 +528,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         sessionTimerJob?.cancel()
         batteryMonitorJob?.cancel()
         dangerCountdownJob?.cancel()
+        activityUpdateJob?.cancel()
     }
 }

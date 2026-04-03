@@ -170,12 +170,19 @@ class ChatRepository {
         messagesRef.child(key).setValue(message.toMap()).await()
     }
 
+    // 1분(60초) 이내 활동한 사용자만 온라인으로 간주
+    private val onlineThresholdMs = 60_000L
+
     fun getOnlineUsers(): Flow<List<EliteUser>> = callbackFlow {
         val listener = object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
+                val currentTime = System.currentTimeMillis()
                 val users = snapshot.children.mapNotNull { child ->
                     child.getValue(EliteUser::class.java)
-                }.filter { it.isOnline }
+                }.filter { user ->
+                    // isOnline이고 1분 이내 활동한 사용자만
+                    user.isOnline && (currentTime - user.lastActiveTime) < onlineThresholdMs
+                }
                 trySend(users)
             }
 
@@ -236,8 +243,10 @@ class ChatRepository {
     fun getOnlineUserCount(): Flow<Int> = callbackFlow {
         val listener = object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
+                val currentTime = System.currentTimeMillis()
                 val count = snapshot.children.count { child ->
-                    child.getValue(EliteUser::class.java)?.isOnline == true
+                    val user = child.getValue(EliteUser::class.java)
+                    user != null && user.isOnline && (currentTime - user.lastActiveTime) < onlineThresholdMs
                 }
                 trySend(count)
             }
