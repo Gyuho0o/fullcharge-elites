@@ -30,7 +30,19 @@ class ElitePreferences(private val context: Context) {
     }
 
     val nickname: Flow<String> = context.dataStore.data.map { prefs ->
-        prefs[Keys.NICKNAME] ?: generateRandomNickname()
+        prefs[Keys.NICKNAME] ?: ""
+    }
+
+    suspend fun initializeNickname(): String {
+        var name: String? = null
+        context.dataStore.edit { prefs ->
+            name = prefs[Keys.NICKNAME]
+            if (name.isNullOrBlank()) {
+                name = generateRandomNickname()
+                prefs[Keys.NICKNAME] = name!!
+            }
+        }
+        return name!!
     }
 
     val totalEliteTime: Flow<Long> = context.dataStore.data.map { prefs ->

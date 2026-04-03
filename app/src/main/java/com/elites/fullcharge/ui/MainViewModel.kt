@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.elites.fullcharge.ElitesApplication
 import com.elites.fullcharge.data.*
+import com.elites.fullcharge.util.ContentFilter
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
@@ -31,7 +32,11 @@ data class MainUiState(
     // 위험 카운트다운 관련
     val isInDanger: Boolean = false,
     val dangerCountdown: Int = 0,  // 남은 초
-    val dangerStartTime: Long = 0L
+    val dangerStartTime: Long = 0L,
+    // 필터링 에러 메시지
+    val filterErrorMessage: String? = null,
+    // 답장 중인 메시지
+    val replyingTo: ChatMessage? = null
 ) {
     companion object {
         const val DANGER_COUNTDOWN_SECONDS = 10  // 10초 카운트다운
@@ -51,17 +56,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var batteryMonitorJob: Job? = null
     private var dangerCountdownJob: Job? = null
 
+    // 도배 방지용
+    private var lastSentMessage: String = ""
+    private var consecutiveCount: Int = 0
+    private var lastSentTime: Long = 0L  // 쿨다운용
+    private val recentMessageTimes = mutableListOf<Long>()  // 시간당 제한용
+
+    companion object {
+        private const val COOLDOWN_MS = 1000L  // 1초 쿨다운
+        private const val RATE_LIMIT_WINDOW_MS = 10000L  // 10초 윈도우
+        private const val RATE_LIMIT_MAX_MESSAGES = 5  // 10초에 최대 5개
+    }
+
     init {
-        // 사용자 ID 초기화
+        // 사용자 ID 및 닉네임 초기화
         viewModelScope.launch {
             val userId = preferences.initializeUserId()
-            _uiState.update { it.copy(userId = userId) }
+            val nickname = preferences.initializeNickname()
+            _uiState.update { it.copy(userId = userId, nickname = nickname) }
         }
 
-        // 닉네임 관찰
+        // 닉네임 변경 관찰
         viewModelScope.launch {
             preferences.nickname.collect { nickname ->
-                _uiState.update { it.copy(nickname = nickname) }
+                if (nickname.isNotBlank()) {
+                    _uiState.update { it.copy(nickname = nickname) }
+                }
             }
         }
 
@@ -160,6 +180,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             // Firebase에 입장 등록
             chatRepository.joinChat(state.userId, state.nickname)
 
+            // 입장 알림 시스템 메시지 전송
+            chatRepository.sendSystemMessage("${state.nickname}님이 전우회에 합류했습니다")
+
             // 세션 시작
             preferences.startSession()
 
@@ -189,7 +212,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             chatRepository.getMessages().collect { messages ->
                 _uiState.update { it.copy(messages = messages) }
+
+                // 다른 사람의 메시지를 읽음 처리
+                val userId = _uiState.value.userId
+                val unreadMessageIds = messages
+                    .filter { it.userId != userId && !it.readBy.contains(userId) && !it.isSystemMessage }
+                    .map { it.id }
+
+                if (unreadMessageIds.isNotEmpty()) {
+                    markMessagesAsRead(unreadMessageIds)
+                }
             }
+        }
+    }
+
+    private fun markMessagesAsRead(messageIds: List<String>) {
+        viewModelScope.launch {
+            val userId = _uiState.value.userId
+            chatRepository.markMessagesAsRead(messageIds, userId)
         }
     }
 
@@ -228,8 +268,56 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun sendMessage(text: String) {
         if (text.isBlank()) return
 
+        val currentTime = System.currentTimeMillis()
+
+        // 도배 방지 1: 쿨다운 (1초)
+        if (currentTime - lastSentTime < COOLDOWN_MS) {
+            _uiState.update { it.copy(filterErrorMessage = "메시지를 너무 빨리 보내고 있어요") }
+            return
+        }
+
+        // 도배 방지 2: 시간당 제한 (10초에 5개)
+        recentMessageTimes.removeAll { currentTime - it > RATE_LIMIT_WINDOW_MS }
+        if (recentMessageTimes.size >= RATE_LIMIT_MAX_MESSAGES) {
+            val waitTime = (RATE_LIMIT_WINDOW_MS - (currentTime - recentMessageTimes.first())) / 1000
+            _uiState.update { it.copy(filterErrorMessage = "잠시 후 다시 시도해주세요 (${waitTime}초)") }
+            return
+        }
+
+        // 도배 방지 3: 같은 메시지 연속 3회 이상 차단
+        val trimmedText = text.trim()
+        if (trimmedText == lastSentMessage) {
+            consecutiveCount++
+            if (consecutiveCount >= 3) {
+                _uiState.update { it.copy(filterErrorMessage = "같은 메시지를 연속으로 보낼 수 없어요") }
+                return
+            }
+        } else {
+            lastSentMessage = trimmedText
+            consecutiveCount = 1
+        }
+
+        // 콘텐츠 필터링
+        val filterResult = ContentFilter.filterMessage(text)
+        if (!filterResult.isAllowed) {
+            _uiState.update { it.copy(filterErrorMessage = filterResult.reason) }
+            return
+        }
+
         val state = _uiState.value
         val rank = EliteRank.fromDuration(state.sessionDuration)
+        val replyingTo = state.replyingTo
+
+        // @멘션 파싱 - @닉네임 형태에서 userId 추출
+        val mentionPattern = Regex("@([^\\s]+)")
+        val mentionedNicknames = mentionPattern.findAll(text).map { it.groupValues[1] }.toList()
+        val mentionedUserIds = state.onlineUsers
+            .filter { user -> mentionedNicknames.contains(user.nickname) }
+            .map { it.userId }
+
+        // 도배 방지 기록 업데이트
+        lastSentTime = currentTime
+        recentMessageTimes.add(currentTime)
 
         viewModelScope.launch {
             val message = ChatMessage(
@@ -238,9 +326,88 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 nickname = state.nickname,
                 message = text,
                 timestamp = System.currentTimeMillis(),
-                rank = rank.name
+                rank = rank.name,
+                replyToId = replyingTo?.id,
+                replyToNickname = replyingTo?.nickname,
+                replyToMessage = replyingTo?.message?.take(50),  // 미리보기는 50자까지만
+                mentions = mentionedUserIds,
+                warning = filterResult.warning  // 스팸/광고 경고
             )
             chatRepository.sendMessage(message)
+
+            // 답장 상태 초기화
+            _uiState.update { it.copy(replyingTo = null) }
+        }
+    }
+
+    fun setReplyingTo(message: ChatMessage) {
+        _uiState.update { it.copy(replyingTo = message) }
+    }
+
+    fun clearReplyingTo() {
+        _uiState.update { it.copy(replyingTo = null) }
+    }
+
+    fun clearFilterError() {
+        _uiState.update { it.copy(filterErrorMessage = null) }
+    }
+
+    fun toggleReaction(messageId: String, emoji: String) {
+        viewModelScope.launch {
+            chatRepository.toggleReaction(messageId, emoji, _uiState.value.userId)
+        }
+    }
+
+    fun createPoll(question: String, options: List<String>) {
+        if (question.isBlank() || options.size < 2) return
+
+        val state = _uiState.value
+        val rank = EliteRank.fromDuration(state.sessionDuration)
+
+        viewModelScope.launch {
+            chatRepository.sendPollMessage(
+                userId = state.userId,
+                nickname = state.nickname,
+                rank = rank.name,
+                question = question,
+                options = options
+            )
+        }
+    }
+
+    fun votePoll(messageId: String, optionIndex: Int) {
+        viewModelScope.launch {
+            chatRepository.votePoll(messageId, optionIndex, _uiState.value.userId)
+        }
+    }
+
+    fun reportMessage(
+        message: ChatMessage,
+        reason: String,
+        onResult: (Boolean) -> Unit
+    ) {
+        viewModelScope.launch {
+            val state = _uiState.value
+
+            // 이미 신고했는지 체크
+            if (chatRepository.hasAlreadyReported(message.id, state.userId)) {
+                onResult(false)
+                return@launch
+            }
+
+            val report = Report(
+                messageId = message.id,
+                messageContent = message.message,
+                reportedUserId = message.userId,
+                reportedNickname = message.nickname,
+                reporterUserId = state.userId,
+                reporterNickname = state.nickname,
+                reason = reason,
+                timestamp = System.currentTimeMillis()
+            )
+
+            val success = chatRepository.reportMessage(report)
+            onResult(success)
         }
     }
 
@@ -311,6 +478,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     sessionStartTime = 0L,
                     sessionDuration = 0L
                 )
+            }
+        }
+    }
+
+    fun changeNickname(newNickname: String) {
+        // 닉네임 필터링
+        val filterResult = ContentFilter.filterNickname(newNickname)
+        if (!filterResult.isAllowed) {
+            _uiState.update { it.copy(filterErrorMessage = filterResult.reason) }
+            return
+        }
+
+        viewModelScope.launch {
+            preferences.setNickname(newNickname)
+
+            // 채팅 중이면 Firebase도 업데이트
+            val state = _uiState.value
+            if (state.isInChat) {
+                chatRepository.updateUserNickname(state.userId, newNickname)
             }
         }
     }

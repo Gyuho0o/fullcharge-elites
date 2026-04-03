@@ -3,15 +3,21 @@ package com.elites.fullcharge.ui.components
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -29,6 +35,8 @@ import java.util.concurrent.TimeUnit
 @Composable
 fun 진급카운트다운(
     현재시간: Long,
+    isExpanded: Boolean = true,
+    onToggle: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val 현재계급 = EliteRank.fromDuration(현재시간)
@@ -65,52 +73,95 @@ fun 진급카운트다운(
         label = "pulse"
     )
 
-    Box(
+    // 화살표 회전 애니메이션
+    val arrowRotation by animateFloatAsState(
+        targetValue = if (isExpanded) 180f else 0f,
+        animationSpec = tween(300),
+        label = "arrowRotation"
+    )
+
+    Column(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(TossBlue.copy(alpha = 0.08f))
-            .padding(16.dp),
-        contentAlignment = Alignment.Center
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally
+        // 헤더 (항상 표시, 클릭하면 토글)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onToggle() }
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "${다음계급.koreanName} 승급까지",
-                fontSize = 14.sp,
-                color = TextSecondary
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "승급",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = TextPrimary
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "${다음계급.koreanName}까지 $남은시간포맷",
+                    fontSize = 13.sp,
+                    color = TossBlue
+                )
+            }
+            Icon(
+                imageVector = Icons.Default.KeyboardArrowDown,
+                contentDescription = if (isExpanded) "접기" else "펼치기",
+                tint = TextSecondary,
+                modifier = Modifier
+                    .size(20.dp)
+                    .rotate(arrowRotation)
             )
-            Spacer(modifier = Modifier.height(4.dp))
+        }
 
-            // 시간 표시 (깜빡이는 효과)
-            Text(
-                text = 남은시간포맷,
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold,
-                color = TossBlue.copy(alpha = pulseAlpha)
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // 진행 바
-            Box(
+        // 상세 내용 (펼쳐졌을 때만)
+        AnimatedVisibility(
+            visible = isExpanded,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut()
+        ) {
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(6.dp)
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(TossBlue.copy(alpha = 0.2f))
+                    .padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                // 시간 표시 (깜빡이는 효과)
+                Text(
+                    text = 남은시간포맷,
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TossBlue.copy(alpha = pulseAlpha)
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // 진행 바
                 Box(
                     modifier = Modifier
-                        .fillMaxHeight()
-                        .fillMaxWidth(animatedProgress)
-                        .background(
-                            Brush.horizontalGradient(
-                                colors = listOf(TossBlueDark, TossBlue, TossBlueLight)
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(TossBlue.copy(alpha = 0.2f))
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .fillMaxWidth(animatedProgress)
+                            .background(
+                                Brush.horizontalGradient(
+                                    colors = listOf(TossBlueDark, TossBlue, TossBlueLight)
+                                )
                             )
-                        )
-                )
+                    )
+                }
             }
         }
     }
@@ -152,6 +203,7 @@ private fun 최고등급배너(modifier: Modifier = Modifier) {
 fun 실시간리더보드(
     사용자들: List<EliteUser>,
     현재사용자ID: String,
+    onCollapse: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val 정렬된사용자들 = 사용자들
@@ -194,16 +246,41 @@ fun 실시간리더보드(
                 textAlign = TextAlign.Center
             )
         } else {
-            정렬된사용자들.take(10).forEachIndexed { index, user ->
+            정렬된사용자들.take(5).forEachIndexed { index, user ->
                 리더보드항목(
                     순위 = index + 1,
                     사용자 = user,
                     본인여부 = user.userId == 현재사용자ID
                 )
-                if (index < 정렬된사용자들.size - 1 && index < 9) {
+                if (index < 정렬된사용자들.size - 1 && index < 4) {
                     Spacer(modifier = Modifier.height(8.dp))
                 }
             }
+        }
+
+        // 접기 버튼
+        Spacer(modifier = Modifier.height(12.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .clickable { onCollapse() }
+                .padding(vertical = 8.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.KeyboardArrowUp,
+                contentDescription = "접기",
+                tint = TextSecondary,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+                text = "접기",
+                fontSize = 13.sp,
+                color = TextSecondary
+            )
         }
     }
 }
@@ -239,17 +316,24 @@ private fun 리더보드항목(
         )
 
         // 등급 배지
+        val 배지색상 = when (계급) {
+            // 장성
+            EliteRank.GENERAL, EliteRank.LIEUTENANT_GENERAL,
+            EliteRank.MAJOR_GENERAL, EliteRank.BRIGADIER_GENERAL -> Color(0xFFD97706)
+            // 영관급
+            EliteRank.COLONEL, EliteRank.LIEUTENANT_COLONEL, EliteRank.MAJOR -> Color(0xFF7C3AED)
+            // 위관급
+            EliteRank.CAPTAIN, EliteRank.FIRST_LIEUTENANT, EliteRank.SECOND_LIEUTENANT -> Color(0xFF059669)
+            // 부사관
+            EliteRank.SERGEANT_MAJOR, EliteRank.MASTER_SERGEANT,
+            EliteRank.SERGEANT_FIRST, EliteRank.STAFF_SERGEANT -> Color(0xFF2563EB)
+            // 병사
+            else -> TextTertiary
+        }
         Box(
             modifier = Modifier
                 .clip(RoundedCornerShape(4.dp))
-                .background(
-                    when (계급) {
-                        EliteRank.GOD -> TossBlue
-                        EliteRank.SERGEANT -> TossBlueDark
-                        EliteRank.PRIVATE -> TossBlueLight.copy(alpha = 0.5f)
-                        else -> TextTertiary
-                    }
-                )
+                .background(배지색상)
                 .padding(horizontal = 6.dp, vertical = 2.dp)
         ) {
             Text(
@@ -344,10 +428,25 @@ fun 진급축하오버레이(
 // 유틸리티 함수들
 private fun 다음계급가져오기(현재계급: EliteRank): EliteRank? {
     return when (현재계급) {
-        EliteRank.NEWBIE -> EliteRank.PRIVATE
-        EliteRank.PRIVATE -> EliteRank.SERGEANT
-        EliteRank.SERGEANT -> EliteRank.GOD
-        EliteRank.GOD -> null
+        EliteRank.TRAINEE -> EliteRank.PRIVATE_SECOND
+        EliteRank.PRIVATE_SECOND -> EliteRank.PRIVATE_FIRST
+        EliteRank.PRIVATE_FIRST -> EliteRank.CORPORAL
+        EliteRank.CORPORAL -> EliteRank.SERGEANT
+        EliteRank.SERGEANT -> EliteRank.STAFF_SERGEANT
+        EliteRank.STAFF_SERGEANT -> EliteRank.SERGEANT_FIRST
+        EliteRank.SERGEANT_FIRST -> EliteRank.MASTER_SERGEANT
+        EliteRank.MASTER_SERGEANT -> EliteRank.SERGEANT_MAJOR
+        EliteRank.SERGEANT_MAJOR -> EliteRank.SECOND_LIEUTENANT
+        EliteRank.SECOND_LIEUTENANT -> EliteRank.FIRST_LIEUTENANT
+        EliteRank.FIRST_LIEUTENANT -> EliteRank.CAPTAIN
+        EliteRank.CAPTAIN -> EliteRank.MAJOR
+        EliteRank.MAJOR -> EliteRank.LIEUTENANT_COLONEL
+        EliteRank.LIEUTENANT_COLONEL -> EliteRank.COLONEL
+        EliteRank.COLONEL -> EliteRank.BRIGADIER_GENERAL
+        EliteRank.BRIGADIER_GENERAL -> EliteRank.MAJOR_GENERAL
+        EliteRank.MAJOR_GENERAL -> EliteRank.LIEUTENANT_GENERAL
+        EliteRank.LIEUTENANT_GENERAL -> EliteRank.GENERAL
+        EliteRank.GENERAL -> null
     }
 }
 

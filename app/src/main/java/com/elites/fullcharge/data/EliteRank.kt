@@ -8,28 +8,123 @@ enum class EliteRank(
     val minMinutes: Long,
     val maxMinutes: Long
 ) {
-    NEWBIE(
-        koreanName = "뉴비",
-        description = "일단 들어오셨군요",
+    // 병사 (Enlisted) - 0~30분
+    TRAINEE(
+        koreanName = "훈련병",
+        description = "훈련소 입소! 충전기 꽉 잡아!",
         minMinutes = 0,
-        maxMinutes = 10
+        maxMinutes = 1
     ),
-    PRIVATE(
-        koreanName = "정회원",
-        description = "슬슬 감이 잡히시나요?",
-        minMinutes = 10,
-        maxMinutes = 60
+    PRIVATE_SECOND(
+        koreanName = "이등병",
+        description = "이등병 진급! 이제 시작이다",
+        minMinutes = 1,
+        maxMinutes = 3
+    ),
+    PRIVATE_FIRST(
+        koreanName = "일등병",
+        description = "일등병 진급! 아직 갈 길이 멀다",
+        minMinutes = 3,
+        maxMinutes = 7
+    ),
+    CORPORAL(
+        koreanName = "상병",
+        description = "상병 진급! 슬슬 감이 잡히네",
+        minMinutes = 7,
+        maxMinutes = 15
     ),
     SERGEANT(
-        koreanName = "터줏대감",
-        description = "이제 충전기를 못 뺀다",
-        minMinutes = 60,
-        maxMinutes = 60 * 24
+        koreanName = "병장",
+        description = "병장 진급! 만기 전역 각?",
+        minMinutes = 15,
+        maxMinutes = 30
     ),
-    GOD(
-        koreanName = "전설",
-        description = "당신이 전설입니다",
-        minMinutes = 60 * 24,
+    // 부사관 (NCO) - 30분~8시간
+    STAFF_SERGEANT(
+        koreanName = "하사",
+        description = "하사 임관! 이제 직업군인이다",
+        minMinutes = 30,
+        maxMinutes = 60
+    ),
+    SERGEANT_FIRST(
+        koreanName = "중사",
+        description = "중사 진급! 부대의 기둥",
+        minMinutes = 60,
+        maxMinutes = 120
+    ),
+    MASTER_SERGEANT(
+        koreanName = "상사",
+        description = "상사 진급! 베테랑의 위엄",
+        minMinutes = 120,
+        maxMinutes = 240
+    ),
+    SERGEANT_MAJOR(
+        koreanName = "원사",
+        description = "원사 진급! 부사관의 정점",
+        minMinutes = 240,
+        maxMinutes = 480
+    ),
+    // 위관급 장교 (Company Officers) - 8~24시간
+    SECOND_LIEUTENANT(
+        koreanName = "소위",
+        description = "소위 임관! 장교의 첫 걸음",
+        minMinutes = 480,
+        maxMinutes = 720
+    ),
+    FIRST_LIEUTENANT(
+        koreanName = "중위",
+        description = "중위 진급! 실전 지휘관",
+        minMinutes = 720,
+        maxMinutes = 1080
+    ),
+    CAPTAIN(
+        koreanName = "대위",
+        description = "대위 진급! 중대장의 위엄",
+        minMinutes = 1080,
+        maxMinutes = 1440
+    ),
+    // 영관급 장교 (Field Officers) - 1~7일
+    MAJOR(
+        koreanName = "소령",
+        description = "소령 진급! 참모의 시작",
+        minMinutes = 1440,
+        maxMinutes = 2880
+    ),
+    LIEUTENANT_COLONEL(
+        koreanName = "중령",
+        description = "중령 진급! 대대장급 지휘관",
+        minMinutes = 2880,
+        maxMinutes = 5760
+    ),
+    COLONEL(
+        koreanName = "대령",
+        description = "대령 진급! 연대장의 위엄",
+        minMinutes = 5760,
+        maxMinutes = 10080
+    ),
+    // 장성 (General Officers) - 1주~1달
+    BRIGADIER_GENERAL(
+        koreanName = "준장",
+        description = "⭐ 준장 진급! 별이 빛난다",
+        minMinutes = 10080,
+        maxMinutes = 20160
+    ),
+    MAJOR_GENERAL(
+        koreanName = "소장",
+        description = "⭐⭐ 소장 진급! 사단장급",
+        minMinutes = 20160,
+        maxMinutes = 30240
+    ),
+    LIEUTENANT_GENERAL(
+        koreanName = "중장",
+        description = "⭐⭐⭐ 중장 진급! 군단장급",
+        minMinutes = 30240,
+        maxMinutes = 43200
+    ),
+    GENERAL(
+        koreanName = "대장",
+        description = "⭐⭐⭐⭐ 대장! 당신이 전설입니다",
+        minMinutes = 43200,
         maxMinutes = Long.MAX_VALUE
     );
 
@@ -37,7 +132,7 @@ enum class EliteRank(
         fun fromDuration(durationMillis: Long): EliteRank {
             val minutes = TimeUnit.MILLISECONDS.toMinutes(durationMillis)
             return entries.find { minutes >= it.minMinutes && minutes < it.maxMinutes }
-                ?: GOD
+                ?: GENERAL
         }
 
         fun fromDurationFormatted(durationMillis: Long): String {

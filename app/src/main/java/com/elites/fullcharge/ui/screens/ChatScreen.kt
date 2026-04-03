@@ -3,8 +3,16 @@ package com.elites.fullcharge.ui.screens
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -13,36 +21,54 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.*
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
 import com.elites.fullcharge.data.BatteryState
 import com.elites.fullcharge.data.ChatMessage
 import com.elites.fullcharge.data.EliteRank
 import com.elites.fullcharge.data.EliteUser
+import com.elites.fullcharge.data.ReportReason
 import com.elites.fullcharge.ui.components.*
 import com.elites.fullcharge.ui.theme.*
+import com.elites.fullcharge.util.LinkPreviewFetcher
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.random.Random
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ChatScreen(
     batteryState: BatteryState,
@@ -52,6 +78,16 @@ fun ChatScreen(
     currentUserNickname: String,
     sessionDuration: Long,
     onSendMessage: (String) -> Unit,
+    onNicknameChange: (String) -> Unit = {},
+    onReportMessage: (ChatMessage, String, (Boolean) -> Unit) -> Unit = { _, _, _ -> },
+    filterErrorMessage: String? = null,
+    onClearFilterError: () -> Unit = {},
+    replyingTo: ChatMessage? = null,
+    onReply: (ChatMessage) -> Unit = {},
+    onClearReply: () -> Unit = {},
+    onToggleReaction: (String, String) -> Unit = { _, _ -> },
+    onCreatePoll: (String, List<String>) -> Unit = { _, _ -> },
+    onVotePoll: (String, Int) -> Unit = { _, _ -> },
     isInDanger: Boolean = false,
     dangerCountdown: Int = 0,
     modifier: Modifier = Modifier
@@ -59,9 +95,27 @@ fun ChatScreen(
     var messageInput by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     var showLeaderboard by remember { mutableStateOf(false) }
+    var showPromotionCountdown by remember { mutableStateOf(true) }
     var showRankUpCelebration by remember { mutableStateOf(false) }
-    var newRank by remember { mutableStateOf(EliteRank.NEWBIE) }
+    var showNicknameDialog by remember { mutableStateOf(false) }
+    var showReportDialog by remember { mutableStateOf(false) }
+    var showPollDialog by remember { mutableStateOf(false) }
+    var messageToReport by remember { mutableStateOf<ChatMessage?>(null) }
+    var newRank by remember { mutableStateOf(EliteRank.TRAINEE) }
     var messageSentTrigger by remember { mutableIntStateOf(0) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+
+    // 필터 에러 메시지 표시
+    LaunchedEffect(filterErrorMessage) {
+        filterErrorMessage?.let {
+            snackbarHostState.showSnackbar(
+                message = it,
+                duration = SnackbarDuration.Short
+            )
+            onClearFilterError()
+        }
+    }
 
     val currentRank = EliteRank.fromDuration(sessionDuration)
     val previousRank = remember { mutableStateOf(currentRank) }
@@ -109,7 +163,9 @@ fun ChatScreen(
         }
 
         Column(
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.statusBars)
         ) {
             // 위험 상태일 때 상단 경고 바
             AnimatedVisibility(
@@ -120,24 +176,28 @@ fun ChatScreen(
                 DangerWarningBar(countdown = dangerCountdown)
             }
 
-            // 상단 바
+            // 상단 바 (키보드 올라와도 고정)
             ChatTopBar(
                 batteryLevel = batteryState.level,
                 userCount = onlineUsers.size,
                 rank = currentRank,
                 nickname = currentUserNickname,
-                onToggleLeaderboard = { showLeaderboard = !showLeaderboard }
+                isLeaderboardExpanded = showLeaderboard,
+                onToggleLeaderboard = { showLeaderboard = !showLeaderboard },
+                onEditNickname = { showNicknameDialog = true }
             )
 
-            // 등급까지 남은 시간 (위험 모드일 땐 숨김)
+            // 등급까지 남은 시간 (위험 모드일 땐 숨김, 고정 영역)
             if (!isInDanger) {
                 진급카운트다운(
                     현재시간 = sessionDuration,
+                    isExpanded = showPromotionCountdown,
+                    onToggle = { showPromotionCountdown = !showPromotionCountdown },
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                 )
             }
 
-            // 리더보드 (토글)
+            // 리더보드 (토글, 고정 영역)
             AnimatedVisibility(
                 visible = showLeaderboard,
                 enter = expandVertically() + fadeIn(),
@@ -146,44 +206,91 @@ fun ChatScreen(
                 실시간리더보드(
                     사용자들 = onlineUsers,
                     현재사용자ID = currentUserId,
+                    onCollapse = { showLeaderboard = false },
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                 )
             }
 
-            // 채팅 메시지 목록
-            LazyColumn(
-                state = listState,
+            // 채팅 영역 (키보드에 반응하는 영역)
+            Column(
                 modifier = Modifier
                     .weight(1f)
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(vertical = 16.dp)
+                    .windowInsetsPadding(WindowInsets.ime)
             ) {
-                items(messages, key = { it.id }) { message ->
-                    if (message.isSystemMessage) {
-                        SystemMessageItem(message = message)
-                    } else {
-                        ChatMessageItem(
-                            message = message,
-                            isOwnMessage = message.userId == currentUserId
+                // 채팅 메시지 목록
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(vertical = 16.dp)
+                ) {
+                    items(messages, key = { it.id }) { message ->
+                        when {
+                            message.isSystemMessage -> {
+                                SystemMessageItem(message = message)
+                            }
+                            message.isPoll -> {
+                                PollMessageItem(
+                                    message = message,
+                                    isOwnMessage = message.userId == currentUserId,
+                                    currentUserId = currentUserId,
+                                    onVote = { optionIndex -> onVotePoll(message.id, optionIndex) }
+                                )
+                            }
+                            else -> {
+                                ChatMessageItem(
+                                    message = message,
+                                    isOwnMessage = message.userId == currentUserId,
+                                    currentUserId = currentUserId,
+                                    onlineUserCount = onlineUsers.size,
+                                    onReply = { onReply(message) },
+                                    onToggleReaction = { emoji -> onToggleReaction(message.id, emoji) },
+                                    onLongPress = {
+                                        // 다른 사람의 메시지만 신고 가능
+                                        if (message.userId != currentUserId) {
+                                            messageToReport = message
+                                            showReportDialog = true
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // 답장 미리보기 (입력창 위)
+                AnimatedVisibility(
+                    visible = replyingTo != null,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut()
+                ) {
+                    replyingTo?.let { replyMessage ->
+                        ReplyPreviewBar(
+                            replyingTo = replyMessage,
+                            onClear = onClearReply
                         )
                     }
                 }
-            }
 
-            // 메시지 입력창
-            MessageInputBar(
-                value = messageInput,
-                onValueChange = { messageInput = it },
-                onSend = {
-                    if (messageInput.isNotBlank()) {
-                        onSendMessage(messageInput.trim())
-                        messageInput = ""
-                        messageSentTrigger++
-                    }
-                }
-            )
+                // 메시지 입력창 (네비게이션 바 위로)
+                MessageInputBar(
+                    value = messageInput,
+                    onValueChange = { messageInput = it },
+                    onSend = {
+                        if (messageInput.isNotBlank()) {
+                            onSendMessage(messageInput.trim())
+                            messageInput = ""
+                            messageSentTrigger++
+                        }
+                    },
+                    onPollClick = { showPollDialog = true },
+                    onlineUsers = onlineUsers,
+                    modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars)
+                )
+            }
         }
 
         // 등급 상승 축하
@@ -191,6 +298,58 @@ fun ChatScreen(
             newRank = newRank,
             visible = showRankUpCelebration,
             onDismiss = { showRankUpCelebration = false }
+        )
+
+        // 닉네임 수정 다이얼로그
+        if (showNicknameDialog) {
+            NicknameEditDialog(
+                currentNickname = currentUserNickname,
+                onDismiss = { showNicknameDialog = false },
+                onConfirm = { newNickname ->
+                    onNicknameChange(newNickname)
+                    showNicknameDialog = false
+                }
+            )
+        }
+
+        // 신고 다이얼로그
+        if (showReportDialog && messageToReport != null) {
+            ReportDialog(
+                message = messageToReport!!,
+                onDismiss = {
+                    showReportDialog = false
+                    messageToReport = null
+                },
+                onReport = { reason ->
+                    onReportMessage(messageToReport!!, reason) { success ->
+                        scope.launch {
+                            snackbarHostState.showSnackbar(
+                                message = if (success) "신고가 접수되었어요" else "이미 신고한 메시지예요",
+                                duration = SnackbarDuration.Short
+                            )
+                        }
+                    }
+                    showReportDialog = false
+                    messageToReport = null
+                }
+            )
+        }
+
+        // 투표 생성 다이얼로그
+        if (showPollDialog) {
+            CreatePollDialog(
+                onDismiss = { showPollDialog = false },
+                onCreatePoll = { question, options ->
+                    onCreatePoll(question, options)
+                    showPollDialog = false
+                }
+            )
+        }
+
+        // 스낵바
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter)
         )
     }
 }
@@ -368,7 +527,9 @@ private fun ChatTopBar(
     userCount: Int,
     rank: EliteRank,
     nickname: String,
-    onToggleLeaderboard: () -> Unit
+    isLeaderboardExpanded: Boolean,
+    onToggleLeaderboard: () -> Unit,
+    onEditNickname: () -> Unit
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "batteryPulse")
     val batteryAlpha by infiniteTransition.animateFloat(
@@ -379,6 +540,13 @@ private fun ChatTopBar(
             repeatMode = RepeatMode.Reverse
         ),
         label = "batteryAlpha"
+    )
+
+    // 화살표 회전 애니메이션
+    val arrowRotation by animateFloatAsState(
+        targetValue = if (isLeaderboardExpanded) 180f else 0f,
+        animationSpec = tween(300),
+        label = "arrowRotation"
     )
 
     Surface(
@@ -420,12 +588,32 @@ private fun ChatTopBar(
                 Row(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    TextButton(onClick = onToggleLeaderboard) {
-                        Text(
-                            text = "랭킹",
-                            fontSize = 14.sp,
-                            color = TossBlue
-                        )
+                    // 랭킹 버튼 (클릭 가능한 모양으로)
+                    Surface(
+                        onClick = onToggleLeaderboard,
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (isLeaderboardExpanded) TossBlue.copy(alpha = 0.1f) else Color.Transparent
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "랭킹",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = TossBlue
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Icon(
+                                imageVector = Icons.Default.KeyboardArrowDown,
+                                contentDescription = if (isLeaderboardExpanded) "접기" else "펼치기",
+                                tint = TossBlue,
+                                modifier = Modifier
+                                    .size(18.dp)
+                                    .rotate(arrowRotation)
+                            )
+                        }
                     }
 
                     Spacer(modifier = Modifier.width(8.dp))
@@ -441,14 +629,22 @@ private fun ChatTopBar(
 
             Spacer(modifier = Modifier.height(12.dp))
 
+            // 내 정보 영역 (클릭 가능)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(8.dp))
                     .background(BackgroundGray)
+                    .clickable { onEditNickname() }
                     .padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                Text(
+                    text = "내 정보",
+                    fontSize = 11.sp,
+                    color = TextTertiary,
+                    modifier = Modifier.padding(end = 8.dp)
+                )
                 RankBadge(rank = rank)
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
@@ -460,6 +656,12 @@ private fun ChatTopBar(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
+                Icon(
+                    imageVector = Icons.Default.Edit,
+                    contentDescription = "닉네임 수정",
+                    tint = TextTertiary,
+                    modifier = Modifier.size(16.dp)
+                )
             }
         }
     }
@@ -467,25 +669,37 @@ private fun ChatTopBar(
 
 @Composable
 private fun RankBadge(rank: EliteRank) {
-    val bgColor = when (rank) {
-        EliteRank.NEWBIE -> TextTertiary
-        EliteRank.PRIVATE -> TossBlueLight.copy(alpha = 0.7f)
-        EliteRank.SERGEANT -> TossBlueDark
-        EliteRank.GOD -> TossBlue
+    val badgeColors = when (rank) {
+        // 장성 (골드 그라데이션)
+        EliteRank.GENERAL -> listOf(Color(0xFF78350F), Color(0xFFD97706), Color(0xFFFBBF24))
+        EliteRank.LIEUTENANT_GENERAL -> listOf(Color(0xFF92400E), Color(0xFFFBBF24))
+        EliteRank.MAJOR_GENERAL -> listOf(Color(0xFFB45309), Color(0xFFFCD34D))
+        EliteRank.BRIGADIER_GENERAL -> listOf(Color(0xFFD97706), Color(0xFFFDE68A))
+        // 영관급 (보라색 그라데이션)
+        EliteRank.COLONEL -> listOf(Color(0xFF581C87), Color(0xFF7C3AED))
+        EliteRank.LIEUTENANT_COLONEL -> listOf(Color(0xFF6D28D9), Color(0xFF8B5CF6))
+        EliteRank.MAJOR -> listOf(Color(0xFF7C3AED), Color(0xFFA78BFA))
+        // 위관급 (초록색 그라데이션)
+        EliteRank.CAPTAIN -> listOf(Color(0xFF047857), Color(0xFF10B981))
+        EliteRank.FIRST_LIEUTENANT -> listOf(Color(0xFF059669), Color(0xFF34D399))
+        EliteRank.SECOND_LIEUTENANT -> listOf(Color(0xFF10B981), Color(0xFF6EE7B7))
+        // 부사관 (파란색 그라데이션)
+        EliteRank.SERGEANT_MAJOR -> listOf(Color(0xFF1E40AF), Color(0xFF3B82F6))
+        EliteRank.MASTER_SERGEANT -> listOf(Color(0xFF1D4ED8), Color(0xFF60A5FA))
+        EliteRank.SERGEANT_FIRST -> listOf(Color(0xFF2563EB), Color(0xFF93C5FD))
+        EliteRank.STAFF_SERGEANT -> listOf(Color(0xFF3B82F6), Color(0xFFBFDBFE))
+        // 병사 (회색 계열)
+        EliteRank.SERGEANT -> listOf(Color(0xFF475569), Color(0xFF64748B))
+        EliteRank.CORPORAL -> listOf(Color(0xFF64748B), Color(0xFF94A3B8))
+        EliteRank.PRIVATE_FIRST -> listOf(Color(0xFF6B7280), Color(0xFF9CA3AF))
+        EliteRank.PRIVATE_SECOND -> listOf(Color(0xFF9CA3AF), Color(0xFFD1D5DB))
+        else -> listOf(Color(0xFFD1D5DB), Color(0xFFE5E7EB))
     }
 
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(4.dp))
-            .background(
-                if (rank == EliteRank.GOD) {
-                    Brush.horizontalGradient(
-                        colors = listOf(TossBlueDark, TossBlue, TossBlueLight)
-                    )
-                } else {
-                    Brush.horizontalGradient(listOf(bgColor, bgColor))
-                }
-            )
+            .background(Brush.horizontalGradient(badgeColors))
             .padding(horizontal = 8.dp, vertical = 4.dp)
     ) {
         Text(
@@ -497,15 +711,28 @@ private fun RankBadge(rank: EliteRank) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ChatMessageItem(
     message: ChatMessage,
-    isOwnMessage: Boolean
+    isOwnMessage: Boolean,
+    currentUserId: String = "",
+    onlineUserCount: Int = 0,
+    onReply: () -> Unit = {},
+    onToggleReaction: (String) -> Unit = {},
+    onLongPress: () -> Unit = {}
 ) {
+    var showReactionPicker by remember { mutableStateOf(false) }
+    val availableReactions = listOf("👍", "❤️", "😂", "😮", "😢", "🔥")
+    val haptic = LocalHapticFeedback.current
+    // 안 읽은 사람 수 계산 (내 메시지에만 표시)
+    val unreadCount = if (isOwnMessage) {
+        message.getUnreadCount(onlineUserCount)
+    } else 0
     val messageRank = try {
         EliteRank.valueOf(message.rank)
     } catch (e: Exception) {
-        EliteRank.NEWBIE
+        EliteRank.TRAINEE
     }
 
     val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
@@ -516,78 +743,404 @@ private fun ChatMessageItem(
         visible = true
     }
 
+    // 전설 등급 반짝이 애니메이션
+    val infiniteTransition = rememberInfiniteTransition(label = "godShimmer")
+    val shimmerOffset by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "shimmer"
+    )
+
+    // 터줏대감 글로우 애니메이션
+    val glowAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 0.7f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "glow"
+    )
+
     AnimatedVisibility(
         visible = visible,
         enter = fadeIn(tween(200)) + slideInHorizontally(
             initialOffsetX = { if (isOwnMessage) it else -it }
         )
     ) {
-        Row(
+        Column(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = if (isOwnMessage) Arrangement.End else Arrangement.Start
+            horizontalAlignment = if (isOwnMessage) Alignment.End else Alignment.Start
         ) {
-            Column(
-                horizontalAlignment = if (isOwnMessage) Alignment.End else Alignment.Start,
-                modifier = Modifier.widthIn(max = 280.dp)
-            ) {
-                if (!isOwnMessage) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(bottom = 4.dp)
-                    ) {
-                        RankBadge(rank = messageRank)
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = message.nickname,
-                            fontSize = 12.sp,
-                            color = TextSecondary
-                        )
-                    }
-                }
-
-                // 등급별 채팅 버블 색상
-                val bubbleColor = if (isOwnMessage) {
-                    TossBlue
-                } else {
-                    when (messageRank) {
-                        EliteRank.GOD -> Color(0xFF1A365D)        // 전설: 진한 네이비
-                        EliteRank.SERGEANT -> Color(0xFF2D4A6F)   // 터줏대감: 네이비
-                        EliteRank.PRIVATE -> Color(0xFF3D5A80)    // 정회원: 블루그레이
-                        else -> ChatBubbleOther                    // 뉴비: 기본
-                    }
-                }
-                val textColor = if (isOwnMessage || messageRank.ordinal >= EliteRank.PRIVATE.ordinal) {
-                    Color.White
-                } else {
-                    TextPrimary
-                }
-
-                Box(
-                    modifier = Modifier
-                        .clip(
-                            RoundedCornerShape(
-                                topStart = 16.dp,
-                                topEnd = 16.dp,
-                                bottomStart = if (isOwnMessage) 16.dp else 4.dp,
-                                bottomEnd = if (isOwnMessage) 4.dp else 16.dp
-                            )
-                        )
-                        .background(bubbleColor)
-                        .padding(horizontal = 14.dp, vertical = 10.dp)
+            // 닉네임 (다른 사람 메시지)
+            if (!isOwnMessage) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(bottom = 4.dp)
                 ) {
+                    RankBadge(rank = messageRank)
+                    Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = message.message,
-                        fontSize = 15.sp,
-                        color = textColor
+                        text = message.nickname,
+                        fontSize = 12.sp,
+                        color = TextSecondary
                     )
                 }
+            }
 
-                Text(
-                    text = timeString,
-                    fontSize = 10.sp,
-                    color = TextTertiary,
-                    modifier = Modifier.padding(top = 4.dp, start = 4.dp, end = 4.dp)
+            // 말풍선 + 시간 (가로 배치)
+            Row(
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = if (isOwnMessage) Arrangement.End else Arrangement.Start
+            ) {
+                // 내 메시지: 읽음 수 + 시간 → 말풍선
+                if (isOwnMessage) {
+                    Column(
+                        horizontalAlignment = Alignment.End,
+                        modifier = Modifier.padding(end = 4.dp)
+                    ) {
+                        if (unreadCount > 0) {
+                            Text(
+                                text = "$unreadCount",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TossBlue
+                            )
+                        }
+                        Text(
+                            text = timeString,
+                            fontSize = 10.sp,
+                            color = TextTertiary
+                        )
+                    }
+                }
+
+                // 등급별 채팅 버블 색상 (19단계)
+                val bubbleColor = when (messageRank) {
+                    // 장성 (골드 계열)
+                    EliteRank.GENERAL -> Color(0xFF78350F)
+                    EliteRank.LIEUTENANT_GENERAL -> Color(0xFF92400E)
+                    EliteRank.MAJOR_GENERAL -> Color(0xFFB45309)
+                    EliteRank.BRIGADIER_GENERAL -> Color(0xFFD97706)
+                    // 영관급 (보라색 계열)
+                    EliteRank.COLONEL -> Color(0xFF581C87)
+                    EliteRank.LIEUTENANT_COLONEL -> Color(0xFF6D28D9)
+                    EliteRank.MAJOR -> Color(0xFF7C3AED)
+                    // 위관급 (초록색 계열)
+                    EliteRank.CAPTAIN -> Color(0xFF047857)
+                    EliteRank.FIRST_LIEUTENANT -> Color(0xFF059669)
+                    EliteRank.SECOND_LIEUTENANT -> Color(0xFF10B981)
+                    // 부사관 (파란색 계열)
+                    EliteRank.SERGEANT_MAJOR -> Color(0xFF1E40AF)
+                    EliteRank.MASTER_SERGEANT -> Color(0xFF1D4ED8)
+                    EliteRank.SERGEANT_FIRST -> Color(0xFF2563EB)
+                    EliteRank.STAFF_SERGEANT -> Color(0xFF3B82F6)
+                    // 병사 (회색~청색 계열)
+                    EliteRank.SERGEANT -> Color(0xFF475569)
+                    EliteRank.CORPORAL -> Color(0xFF64748B)
+                    EliteRank.PRIVATE_FIRST -> Color(0xFF6B7280)
+                    EliteRank.PRIVATE_SECOND -> Color(0xFF9CA3AF)
+                    else -> if (isOwnMessage) Color(0xFFD1D5DB) else ChatBubbleOther
+                }
+
+                val textColor = when {
+                    messageRank.ordinal >= EliteRank.PRIVATE_SECOND.ordinal -> Color.White
+                    isOwnMessage -> Color.White
+                    else -> TextPrimary
+                }
+
+                // 등급별 버블 모디파이어
+                val bubbleShape = RoundedCornerShape(
+                    topStart = 16.dp,
+                    topEnd = 16.dp,
+                    bottomStart = if (isOwnMessage) 16.dp else 4.dp,
+                    bottomEnd = if (isOwnMessage) 4.dp else 16.dp
                 )
+
+                val bubbleModifier = when (messageRank) {
+                    // 대장: 최고급 골드 반짝이
+                    EliteRank.GENERAL -> {
+                        Modifier
+                            .drawBehind {
+                                drawRoundRect(
+                                    color = Color(0xFFFFD700).copy(alpha = 0.6f),
+                                    cornerRadius = CornerRadius(22.dp.toPx()),
+                                    size = Size(size.width + 12.dp.toPx(), size.height + 12.dp.toPx()),
+                                    topLeft = Offset(-6.dp.toPx(), -6.dp.toPx())
+                                )
+                            }
+                            .clip(bubbleShape)
+                            .background(
+                                Brush.linearGradient(
+                                    colors = listOf(
+                                        Color(0xFF78350F), Color(0xFFFFD700).copy(alpha = 0.5f + shimmerOffset * 0.5f),
+                                        Color(0xFF78350F)
+                                    ),
+                                    start = Offset(shimmerOffset * 600f - 150f, 0f),
+                                    end = Offset(shimmerOffset * 600f + 150f, 100f)
+                                )
+                            )
+                    }
+                    // 중장~준장: 골드 글로우
+                    EliteRank.LIEUTENANT_GENERAL, EliteRank.MAJOR_GENERAL, EliteRank.BRIGADIER_GENERAL -> {
+                        Modifier
+                            .drawBehind {
+                                drawRoundRect(
+                                    color = Color(0xFFFBBF24).copy(alpha = glowAlpha * 0.4f),
+                                    cornerRadius = CornerRadius(20.dp.toPx()),
+                                    size = Size(size.width + 8.dp.toPx(), size.height + 8.dp.toPx()),
+                                    topLeft = Offset(-4.dp.toPx(), -4.dp.toPx())
+                                )
+                            }
+                            .clip(bubbleShape)
+                            .background(bubbleColor)
+                    }
+                    // 대령~소령: 보라색 글로우
+                    EliteRank.COLONEL, EliteRank.LIEUTENANT_COLONEL, EliteRank.MAJOR -> {
+                        Modifier
+                            .drawBehind {
+                                drawRoundRect(
+                                    color = Color(0xFFA78BFA).copy(alpha = glowAlpha * 0.35f),
+                                    cornerRadius = CornerRadius(18.dp.toPx()),
+                                    size = Size(size.width + 6.dp.toPx(), size.height + 6.dp.toPx()),
+                                    topLeft = Offset(-3.dp.toPx(), -3.dp.toPx())
+                                )
+                            }
+                            .clip(bubbleShape)
+                            .background(bubbleColor)
+                    }
+                    // 대위~소위: 초록색 글로우
+                    EliteRank.CAPTAIN, EliteRank.FIRST_LIEUTENANT, EliteRank.SECOND_LIEUTENANT -> {
+                        Modifier
+                            .drawBehind {
+                                drawRoundRect(
+                                    color = Color(0xFF34D399).copy(alpha = 0.25f),
+                                    cornerRadius = CornerRadius(17.dp.toPx()),
+                                    size = Size(size.width + 4.dp.toPx(), size.height + 4.dp.toPx()),
+                                    topLeft = Offset(-2.dp.toPx(), -2.dp.toPx())
+                                )
+                            }
+                            .clip(bubbleShape)
+                            .background(bubbleColor)
+                    }
+                    // 원사~하사: 파란색 그림자
+                    EliteRank.SERGEANT_MAJOR, EliteRank.MASTER_SERGEANT, EliteRank.SERGEANT_FIRST, EliteRank.STAFF_SERGEANT -> {
+                        Modifier
+                            .drawBehind {
+                                drawRoundRect(
+                                    color = Color(0xFF60A5FA).copy(alpha = 0.2f),
+                                    cornerRadius = CornerRadius(16.dp.toPx()),
+                                    size = Size(size.width + 3.dp.toPx(), size.height + 3.dp.toPx()),
+                                    topLeft = Offset(-1.dp.toPx(), -1.dp.toPx())
+                                )
+                            }
+                            .clip(bubbleShape)
+                            .background(bubbleColor)
+                    }
+                    // 병장~훈련병: 기본
+                    else -> {
+                        Modifier
+                            .clip(bubbleShape)
+                            .background(bubbleColor)
+                    }
+                }
+
+                // URL 포함 여부 확인
+                val containsUrl = LinkPreviewFetcher.containsUrl(message.message)
+                val extractedUrl = if (containsUrl) LinkPreviewFetcher.extractUrl(message.message) else null
+
+                // 말풍선 (롱프레스로 이모지 선택)
+                Box(
+                    modifier = Modifier
+                        .widthIn(max = 250.dp)
+                        .combinedClickable(
+                            onClick = onReply,
+                            onLongClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                showReactionPicker = true
+                            }
+                        )
+                        .then(bubbleModifier)
+                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                ) {
+                    Column {
+                        // 답장 대상 표시
+                        if (message.replyToNickname != null && message.replyToMessage != null) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color.Black.copy(alpha = 0.1f))
+                                    .padding(8.dp)
+                            ) {
+                                Column {
+                                    Text(
+                                        text = message.replyToNickname,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = textColor.copy(alpha = 0.7f)
+                                    )
+                                    Text(
+                                        text = message.replyToMessage,
+                                        fontSize = 12.sp,
+                                        color = textColor.copy(alpha = 0.6f),
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                        }
+
+                        // 대장 등급은 텍스트에도 골드 발광 효과
+                        if (messageRank == EliteRank.GENERAL) {
+                            Text(
+                                text = message.message,
+                                fontSize = 15.sp,
+                                color = Color(0xFFFFF7ED),  // 밝은 크림색
+                                style = androidx.compose.ui.text.TextStyle(
+                                    shadow = androidx.compose.ui.graphics.Shadow(
+                                        color = Color(0xFFFFD700).copy(alpha = 0.7f),
+                                        offset = Offset(0f, 0f),
+                                        blurRadius = 12f
+                                    )
+                                )
+                            )
+                        } else {
+                            Text(
+                                text = message.message,
+                                fontSize = 15.sp,
+                                color = textColor
+                            )
+                        }
+
+                        // 링크 미리보기
+                        extractedUrl?.let { url ->
+                            Spacer(modifier = Modifier.height(8.dp))
+                            if (isOwnMessage || messageRank.ordinal >= EliteRank.PRIVATE_SECOND.ordinal) {
+                                LinkPreviewCard(url = url)
+                            } else {
+                                LinkPreviewCardLight(url = url)
+                            }
+                        }
+                    }
+                } // Box 끝
+
+                // 다른 사람 메시지: 말풍선 → 시간
+                if (!isOwnMessage) {
+                    Text(
+                        text = timeString,
+                        fontSize = 10.sp,
+                        color = TextTertiary,
+                        modifier = Modifier.padding(start = 4.dp)
+                    )
+                }
+            } // Row (말풍선 + 시간) 끝
+
+            // 리액션 표시
+            if (message.reactions.isNotEmpty()) {
+                Row(
+                    modifier = Modifier.padding(top = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    message.reactions.forEach { (emoji, userIds) ->
+                        val isReacted = userIds.contains(currentUserId)
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(
+                                    if (isReacted) TossBlue.copy(alpha = 0.2f)
+                                    else BackgroundGray
+                                )
+                                .clickable { onToggleReaction(emoji) }
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(text = emoji, fontSize = 12.sp)
+                                if (userIds.size > 1) {
+                                    Spacer(modifier = Modifier.width(2.dp))
+                                    Text(
+                                        text = "${userIds.size}",
+                                        fontSize = 11.sp,
+                                        color = if (isReacted) TossBlue else TextSecondary
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 롱프레스 이모지 선택 버블 (Popup)
+            if (showReactionPicker) {
+                Popup(
+                    alignment = if (isOwnMessage) Alignment.TopEnd else Alignment.TopStart,
+                    offset = IntOffset(0, -120),
+                    onDismissRequest = { showReactionPicker = false }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .shadow(8.dp, RoundedCornerShape(24.dp))
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(Color.White)
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        availableReactions.forEach { emoji ->
+                            Text(
+                                text = emoji,
+                                fontSize = 24.sp,
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .clickable {
+                                        onToggleReaction(emoji)
+                                        showReactionPicker = false
+                                    }
+                                    .padding(4.dp)
+                            )
+                        }
+                        // 신고 버튼 (다른 사람 메시지에만)
+                        if (!isOwnMessage) {
+                            Box(
+                                modifier = Modifier
+                                    .padding(start = 4.dp)
+                                    .width(1.dp)
+                                    .height(24.dp)
+                                    .background(DividerGray)
+                            )
+                            Text(
+                                text = "🚨",
+                                fontSize = 22.sp,
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .clickable {
+                                        showReactionPicker = false
+                                        onLongPress()
+                                    }
+                                    .padding(4.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 스팸/광고 경고 표시 (말풍선 아래)
+            if (message.warning != null) {
+                Row(
+                    modifier = Modifier.padding(top = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "⚠️ ${message.warning}",
+                        fontSize = 11.sp,
+                        color = StatusYellow
+                    )
+                }
             }
         }
     }
@@ -633,41 +1186,108 @@ private fun SystemMessageItem(
 private fun MessageInputBar(
     value: String,
     onValueChange: (String) -> Unit,
-    onSend: () -> Unit
+    onSend: () -> Unit,
+    onPollClick: () -> Unit = {},
+    onlineUsers: List<EliteUser> = emptyList(),
+    modifier: Modifier = Modifier
 ) {
+    // @멘션 자동완성
+    val mentionQuery = remember(value) {
+        val lastAtIndex = value.lastIndexOf('@')
+        if (lastAtIndex >= 0 && !value.substring(lastAtIndex).contains(' ')) {
+            value.substring(lastAtIndex + 1)
+        } else null
+    }
+    val filteredUsers = remember(mentionQuery, onlineUsers) {
+        if (mentionQuery != null && mentionQuery.isNotEmpty()) {
+            onlineUsers.filter { it.nickname.contains(mentionQuery, ignoreCase = true) }.take(5)
+        } else emptyList()
+    }
+
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         color = BackgroundWhite.copy(alpha = 0.95f),
         shadowElevation = 4.dp
     ) {
-        Row(
-            modifier = Modifier
-                .padding(12.dp)
-                .fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            OutlinedTextField(
-                value = value,
-                onValueChange = onValueChange,
-                modifier = Modifier.weight(1f),
-                placeholder = {
+        Column {
+            // 멘션 자동완성 목록
+            AnimatedVisibility(
+                visible = filteredUsers.isNotEmpty(),
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(BackgroundGray)
+                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                ) {
                     Text(
-                        text = "메시지를 입력하세요",
-                        color = TextTertiary
+                        text = "멘션할 사용자",
+                        fontSize = 11.sp,
+                        color = TextTertiary,
+                        modifier = Modifier.padding(vertical = 4.dp)
                     )
-                },
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = TossBlue,
-                    unfocusedBorderColor = BorderGray,
-                    cursorColor = TossBlue,
-                    focusedTextColor = TextPrimary,
-                    unfocusedTextColor = TextPrimary
-                ),
-                shape = RoundedCornerShape(24.dp),
-                maxLines = 3,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                keyboardActions = KeyboardActions(onSend = { onSend() })
-            )
+                    filteredUsers.forEach { user ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    val lastAtIndex = value.lastIndexOf('@')
+                                    val newValue = value.substring(0, lastAtIndex + 1) + user.nickname + " "
+                                    onValueChange(newValue)
+                                }
+                                .padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "@${user.nickname}",
+                                fontSize = 14.sp,
+                                color = TossBlue,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                }
+            }
+
+            Row(
+                modifier = Modifier
+                    .padding(12.dp)
+                    .fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // 투표 버튼
+                IconButton(
+                    onClick = onPollClick,
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Text(text = "🗳️", fontSize = 20.sp)
+                }
+
+                OutlinedTextField(
+                    value = value,
+                    onValueChange = onValueChange,
+                    modifier = Modifier.weight(1f),
+                    placeholder = {
+                        Text(
+                            text = "메시지를 입력하세요 (@멘션)",
+                            color = TextTertiary
+                        )
+                    },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = TossBlue,
+                        unfocusedBorderColor = BorderGray,
+                        cursorColor = TossBlue,
+                        focusedTextColor = TextPrimary,
+                        unfocusedTextColor = TextPrimary
+                    ),
+                    shape = RoundedCornerShape(24.dp),
+                    maxLines = 3,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                    keyboardActions = KeyboardActions(onSend = { onSend() })
+                )
 
             Spacer(modifier = Modifier.width(8.dp))
 
@@ -678,19 +1298,20 @@ private fun MessageInputBar(
                 label = "sendScale"
             )
 
-            IconButton(
-                onClick = onSend,
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .background(if (hasText) TossBlue else DividerGray)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Send,
-                    contentDescription = "전송",
-                    tint = if (hasText) Color.White else TextTertiary,
-                    modifier = Modifier.size((20 * buttonScale).dp)
-                )
+                IconButton(
+                    onClick = onSend,
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(if (hasText) TossBlue else DividerGray)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Send,
+                        contentDescription = "전송",
+                        tint = if (hasText) Color.White else TextTertiary,
+                        modifier = Modifier.size((20 * buttonScale).dp)
+                    )
+                }
             }
         }
     }
@@ -966,4 +1587,489 @@ private fun DangerWarningOverlay(countdown: Int) {
             )
         )
     }
+}
+
+@Composable
+private fun NicknameEditDialog(
+    currentNickname: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var nickname by remember { mutableStateOf(currentNickname) }
+    var isError by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "닉네임 변경",
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column {
+                Text(
+                    text = "다른 전우들에게 보여질 이름이에요",
+                    fontSize = 14.sp,
+                    color = TextSecondary,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+                OutlinedTextField(
+                    value = nickname,
+                    onValueChange = {
+                        nickname = it
+                        isError = it.isBlank() || it.length > 20
+                    },
+                    label = { Text("닉네임") },
+                    placeholder = { Text("2~20자 이내") },
+                    singleLine = true,
+                    isError = isError,
+                    supportingText = if (isError) {
+                        { Text("2~20자 이내로 입력해주세요", color = StatusRed) }
+                    } else null,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = TossBlue,
+                        cursorColor = TossBlue,
+                        focusedLabelColor = TossBlue
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    if (nickname.isNotBlank() && nickname.length in 1..20) {
+                        onConfirm(nickname.trim())
+                    }
+                },
+                enabled = nickname.isNotBlank() && nickname.length in 1..20
+            ) {
+                Text("변경", color = if (nickname.isNotBlank() && nickname.length in 1..20) TossBlue else TextTertiary)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("취소", color = TextSecondary)
+            }
+        }
+    )
+}
+
+@Composable
+private fun ReportDialog(
+    message: ChatMessage,
+    onDismiss: () -> Unit,
+    onReport: (String) -> Unit
+) {
+    var selectedReason by remember { mutableStateOf<ReportReason?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "메시지 신고",
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column {
+                Text(
+                    text = "신고 사유를 선택해주세요",
+                    fontSize = 14.sp,
+                    color = TextSecondary,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+
+                // 신고 대상 메시지 미리보기
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(BackgroundGray)
+                        .padding(12.dp)
+                ) {
+                    Column {
+                        Text(
+                            text = message.nickname,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = TextSecondary
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = message.message,
+                            fontSize = 14.sp,
+                            color = TextPrimary,
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // 신고 사유 선택
+                ReportReason.entries.forEach { reason ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { selectedReason = reason }
+                            .background(
+                                if (selectedReason == reason) TossBlue.copy(alpha = 0.1f)
+                                else Color.Transparent
+                            )
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = selectedReason == reason,
+                            onClick = { selectedReason = reason },
+                            colors = RadioButtonDefaults.colors(
+                                selectedColor = TossBlue
+                            )
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = reason.displayName,
+                            fontSize = 14.sp,
+                            color = if (selectedReason == reason) TossBlue else TextPrimary
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    selectedReason?.let { onReport(it.name) }
+                },
+                enabled = selectedReason != null
+            ) {
+                Text(
+                    text = "신고하기",
+                    color = if (selectedReason != null) StatusRed else TextTertiary
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("취소", color = TextSecondary)
+            }
+        }
+    )
+}
+
+@Composable
+private fun ReplyPreviewBar(
+    replyingTo: ChatMessage,
+    onClear: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = BackgroundGray
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(horizontal = 16.dp, vertical = 10.dp)
+                .fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 왼쪽 파란색 바
+            Box(
+                modifier = Modifier
+                    .width(3.dp)
+                    .height(40.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(TossBlue)
+            )
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            // 답장 대상 정보
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(
+                    text = "${replyingTo.nickname}에게 답장",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = TossBlue
+                )
+                Text(
+                    text = replyingTo.message,
+                    fontSize = 13.sp,
+                    color = TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            // 닫기 버튼
+            IconButton(
+                onClick = onClear,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "답장 취소",
+                    tint = TextTertiary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PollMessageItem(
+    message: ChatMessage,
+    isOwnMessage: Boolean,
+    currentUserId: String,
+    onVote: (Int) -> Unit
+) {
+    val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+    val timeString = timeFormat.format(Date(message.timestamp))
+
+    // 총 투표 수 계산
+    val totalVotes = message.pollVotes.values.sumOf { it.size }
+
+    // 사용자가 투표한 옵션 찾기
+    val userVotedOption = message.pollVotes.entries.find { (_, userIds) ->
+        userIds.contains(currentUserId)
+    }?.key?.toIntOrNull()
+
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { visible = true }
+
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(200)) + slideInHorizontally(
+            initialOffsetX = { if (isOwnMessage) it else -it }
+        )
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = if (isOwnMessage) Arrangement.End else Arrangement.Start
+        ) {
+            Column(
+                horizontalAlignment = if (isOwnMessage) Alignment.End else Alignment.Start,
+                modifier = Modifier.widthIn(max = 300.dp)
+            ) {
+                if (!isOwnMessage) {
+                    Text(
+                        text = message.nickname,
+                        fontSize = 12.sp,
+                        color = TextSecondary,
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+                }
+
+                // 투표 카드
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp)
+                    ) {
+                        // 투표 아이콘 + 질문
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(text = "🗳️", fontSize = 18.sp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = message.pollQuestion ?: "",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = TextPrimary
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // 투표 옵션들
+                        message.pollOptions.forEachIndexed { index, option ->
+                            val voteCount = message.pollVotes[index.toString()]?.size ?: 0
+                            val votePercentage = if (totalVotes > 0) voteCount * 100 / totalVotes else 0
+                            val isVoted = userVotedOption == index
+
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (isVoted) TossBlue.copy(alpha = 0.1f) else BackgroundGray)
+                                    .clickable { onVote(index) }
+                            ) {
+                                // 투표율 배경 바
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth(votePercentage / 100f)
+                                        .height(40.dp)
+                                        .background(
+                                            if (isVoted) TossBlue.copy(alpha = 0.2f)
+                                            else DividerGray
+                                        )
+                                )
+                                // 옵션 텍스트
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(40.dp)
+                                        .padding(horizontal = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = option,
+                                        fontSize = 14.sp,
+                                        color = if (isVoted) TossBlue else TextPrimary,
+                                        fontWeight = if (isVoted) FontWeight.Medium else FontWeight.Normal
+                                    )
+                                    Text(
+                                        text = "${votePercentage}%",
+                                        fontSize = 12.sp,
+                                        color = if (isVoted) TossBlue else TextSecondary
+                                    )
+                                }
+                            }
+                        }
+
+                        // 총 투표 수
+                        Text(
+                            text = "${totalVotes}명 참여",
+                            fontSize = 12.sp,
+                            color = TextTertiary,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                    }
+                }
+
+                // 시간
+                Text(
+                    text = timeString,
+                    fontSize = 10.sp,
+                    color = TextTertiary,
+                    modifier = Modifier.padding(top = 4.dp, start = 4.dp, end = 4.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CreatePollDialog(
+    onDismiss: () -> Unit,
+    onCreatePoll: (String, List<String>) -> Unit
+) {
+    var question by remember { mutableStateOf("") }
+    var options by remember { mutableStateOf(listOf("", "")) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(text = "🗳️", fontSize = 20.sp)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(text = "투표 만들기", fontWeight = FontWeight.Bold)
+            }
+        },
+        text = {
+            Column {
+                // 질문 입력
+                OutlinedTextField(
+                    value = question,
+                    onValueChange = { question = it },
+                    label = { Text("질문") },
+                    placeholder = { Text("무엇을 물어볼까요?") },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = TossBlue,
+                        cursorColor = TossBlue,
+                        focusedLabelColor = TossBlue
+                    ),
+                    singleLine = true
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    text = "선택지 (최소 2개, 최대 4개)",
+                    fontSize = 13.sp,
+                    color = TextSecondary
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // 선택지 입력
+                options.forEachIndexed { index, option ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = option,
+                            onValueChange = { newValue ->
+                                options = options.toMutableList().apply { this[index] = newValue }
+                            },
+                            placeholder = { Text("선택지 ${index + 1}") },
+                            modifier = Modifier.weight(1f),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = TossBlue,
+                                cursorColor = TossBlue
+                            ),
+                            singleLine = true
+                        )
+                        // 삭제 버튼 (3개 이상일 때만)
+                        if (options.size > 2) {
+                            IconButton(
+                                onClick = {
+                                    options = options.toMutableList().apply { removeAt(index) }
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "삭제",
+                                    tint = TextTertiary
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // 선택지 추가 버튼
+                if (options.size < 4) {
+                    TextButton(
+                        onClick = { options = options + "" },
+                        modifier = Modifier.padding(top = 8.dp)
+                    ) {
+                        Text("+ 선택지 추가", color = TossBlue)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            val isValid = question.isNotBlank() && options.count { it.isNotBlank() } >= 2
+            TextButton(
+                onClick = {
+                    if (isValid) {
+                        onCreatePoll(question, options.filter { it.isNotBlank() })
+                    }
+                },
+                enabled = isValid
+            ) {
+                Text(
+                    text = "투표 시작",
+                    color = if (isValid) TossBlue else TextTertiary
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("취소", color = TextSecondary)
+            }
+        }
+    )
 }

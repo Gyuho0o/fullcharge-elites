@@ -6,8 +6,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
-import android.media.AudioAttributes
-import android.media.SoundPool
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -27,24 +25,22 @@ import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import android.view.WindowManager
+import androidx.core.view.WindowCompat
 import com.elites.fullcharge.ad.AdManager
-import com.elites.fullcharge.service.BatteryMonitorService
 import com.elites.fullcharge.ui.AppScreen
 import com.elites.fullcharge.ui.MainViewModel
 import com.elites.fullcharge.ui.screens.ChatScreen
 import com.elites.fullcharge.ui.screens.ExileScreen
 import com.elites.fullcharge.ui.screens.GatekeeperScreen
 import com.elites.fullcharge.ui.theme.ElitesTheme
+import com.elites.fullcharge.util.SoundManager
 import com.google.android.gms.ads.MobileAds
 
 class MainActivity : ComponentActivity() {
 
     private val viewModel: MainViewModel by viewModels()
     private lateinit var adManager: AdManager
-
-    private var soundPool: SoundPool? = null
-    private var entrySoundId: Int = 0
-    private var exileSoundId: Int = 0
+    private lateinit var soundManager: SoundManager
 
     private val batteryReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -61,14 +57,17 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // Edge-to-edge 디스플레이 설정 (WindowInsets 직접 제어)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+
         // 알림 권한 요청 (Android 13+)
         requestNotificationPermission()
 
         // 배터리 최적화 무시 요청
         requestBatteryOptimizationExemption()
 
-        // 사운드 초기화
-        initSounds()
+        // 사운드 매니저 초기화
+        soundManager = SoundManager(this)
 
         // 배터리 상태 리시버 등록
         registerBatteryReceiver()
@@ -84,20 +83,25 @@ class MainActivity : ComponentActivity() {
                 // 화면 전환 시 사운드 재생
                 LaunchedEffect(uiState.currentScreen) {
                     when (uiState.currentScreen) {
-                        AppScreen.CHAT -> playEntrySound()
-                        AppScreen.EXILE -> playExileSound()
+                        AppScreen.CHAT -> soundManager.playEntrySound()
+                        AppScreen.EXILE -> soundManager.playExileSound()
                         else -> {}
                     }
                 }
 
-                // 채팅방 진입 시 서비스 시작 + 풀파워 모드 + 광고 미리 로드
+                // 위험 모드 시 경고음
+                LaunchedEffect(uiState.isInDanger, uiState.dangerCountdown) {
+                    if (uiState.isInDanger && uiState.dangerCountdown <= 5) {
+                        soundManager.playDangerSound()
+                    }
+                }
+
+                // 채팅방 진입 시 풀파워 모드 + 광고 미리 로드
                 LaunchedEffect(uiState.isInChat) {
                     if (uiState.isInChat) {
-                        startBatteryMonitorService()
                         풀파워모드시작()
                         adManager.loadInterstitialAd() // 퇴장 대비 미리 로드
                     } else {
-                        stopBatteryMonitorService()
                         풀파워모드종료()
                     }
                 }
@@ -112,6 +116,22 @@ class MainActivity : ComponentActivity() {
                         uiState = uiState,
                         onEnterPortal = { viewModel.enterChat() },
                         onSendMessage = { viewModel.sendMessage(it) },
+                        onNicknameChange = { viewModel.changeNickname(it) },
+                        onReportMessage = { message, reason, onResult ->
+                            viewModel.reportMessage(message, reason, onResult)
+                        },
+                        onClearFilterError = { viewModel.clearFilterError() },
+                        onReply = { viewModel.setReplyingTo(it) },
+                        onClearReply = { viewModel.clearReplyingTo() },
+                        onToggleReaction = { messageId, emoji ->
+                            viewModel.toggleReaction(messageId, emoji)
+                        },
+                        onCreatePoll = { question, options ->
+                            viewModel.createPoll(question, options)
+                        },
+                        onVotePoll = { messageId, optionIndex ->
+                            viewModel.votePoll(messageId, optionIndex)
+                        },
                         onExileDismiss = {
                             // 광고 표시 후 게이트키퍼로 이동
                             adManager.showInterstitialAd(this@MainActivity) {
@@ -129,6 +149,14 @@ class MainActivity : ComponentActivity() {
         uiState: com.elites.fullcharge.ui.MainUiState,
         onEnterPortal: () -> Unit,
         onSendMessage: (String) -> Unit,
+        onNicknameChange: (String) -> Unit,
+        onReportMessage: (com.elites.fullcharge.data.ChatMessage, String, (Boolean) -> Unit) -> Unit,
+        onClearFilterError: () -> Unit,
+        onReply: (com.elites.fullcharge.data.ChatMessage) -> Unit,
+        onClearReply: () -> Unit,
+        onToggleReaction: (String, String) -> Unit,
+        onCreatePoll: (String, List<String>) -> Unit,
+        onVotePoll: (String, Int) -> Unit,
         onExileDismiss: () -> Unit
     ) {
         AnimatedContent(
@@ -174,6 +202,16 @@ class MainActivity : ComponentActivity() {
                         currentUserNickname = uiState.nickname,
                         sessionDuration = uiState.sessionDuration,
                         onSendMessage = onSendMessage,
+                        onNicknameChange = onNicknameChange,
+                        onReportMessage = onReportMessage,
+                        filterErrorMessage = uiState.filterErrorMessage,
+                        onClearFilterError = onClearFilterError,
+                        replyingTo = uiState.replyingTo,
+                        onReply = onReply,
+                        onClearReply = onClearReply,
+                        onToggleReaction = onToggleReaction,
+                        onCreatePoll = onCreatePoll,
+                        onVotePoll = onVotePoll,
                         isInDanger = uiState.isInDanger,
                         dangerCountdown = uiState.dangerCountdown
                     )
@@ -185,34 +223,6 @@ class MainActivity : ComponentActivity() {
                     )
                 }
             }
-        }
-    }
-
-    private fun initSounds() {
-        val audioAttributes = AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_GAME)
-            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-            .build()
-
-        soundPool = SoundPool.Builder()
-            .setMaxStreams(2)
-            .setAudioAttributes(audioAttributes)
-            .build()
-
-        // 사운드 파일이 있다면 로드 (res/raw/ 폴더에 추가 필요)
-        // entrySoundId = soundPool?.load(this, R.raw.entry_fanfare, 1) ?: 0
-        // exileSoundId = soundPool?.load(this, R.raw.exile_buzz, 1) ?: 0
-    }
-
-    private fun playEntrySound() {
-        if (entrySoundId != 0) {
-            soundPool?.play(entrySoundId, 1f, 1f, 1, 0, 1f)
-        }
-    }
-
-    private fun playExileSound() {
-        if (exileSoundId != 0) {
-            soundPool?.play(exileSoundId, 1f, 1f, 1, 0, 1f)
         }
     }
 
@@ -251,20 +261,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun startBatteryMonitorService() {
-        val intent = Intent(this, BatteryMonitorService::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(intent)
-        } else {
-            startService(intent)
-        }
-    }
-
-    private fun stopBatteryMonitorService() {
-        val intent = Intent(this, BatteryMonitorService::class.java)
-        stopService(intent)
-    }
-
     /**
      * 서바이벌 모드 시작
      * - 화면 항상 켜짐 (메시지를 놓치지 않게)
@@ -295,7 +291,6 @@ class MainActivity : ComponentActivity() {
         } catch (e: Exception) {
             // 이미 해제됨
         }
-        soundPool?.release()
-        soundPool = null
+        soundManager.release()
     }
 }

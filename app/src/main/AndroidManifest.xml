@@ -6,9 +6,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
-    <!-- 포그라운드 서비스 권한 -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- 알림 권한 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- 배터리 최적화 무시 요청 권한 -->
@@ -41,16 +39,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
-        <!-- 배터리 모니터링 포그라운드 서비스 -->
-        <service
-            android:name=".service.BatteryMonitorService"
-            android:exported="false"
-            android:foregroundServiceType="specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="battery_monitoring_for_elite_chat" />
-        </service>
 
         <!-- 충전 상태 변화 리시버 -->
         <receiver

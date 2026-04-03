@@ -6,13 +6,13 @@ plugins {
 
 android {
     namespace = "com.elites.fullcharge"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.elites.fullcharge"
         minSdk = 26
-        targetSdk = 34
-        versionCode = 1
+        targetSdk = 35
+        versionCode = 12
         versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -82,6 +82,10 @@ dependencies {
 
     // Google AdMob
     implementation("com.google.android.gms:play-services-ads:22.6.0")
+
+    // Link Preview
+    implementation("org.jsoup:jsoup:1.17.2")
+    implementation("io.coil-kt:coil-compose:2.5.0")
 
     // Testing
     testImplementation("junit:junit:4.13.2")
