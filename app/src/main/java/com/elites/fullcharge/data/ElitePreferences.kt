@@ -95,6 +95,10 @@ class ElitePreferences(private val context: Context) {
         }
     }
 
+    suspend fun getNickname(): String {
+        return context.dataStore.data.first()[Keys.NICKNAME] ?: ""
+    }
+
     suspend fun startSession() {
         context.dataStore.edit { prefs ->
             prefs[Keys.SESSION_START_TIME] = System.currentTimeMillis()

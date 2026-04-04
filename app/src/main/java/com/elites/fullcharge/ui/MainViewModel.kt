@@ -633,9 +633,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             val state = _uiState.value
+            val wasAdminMode = state.isAdminMode
 
-            // 역대 기록 업데이트
-            if (state.sessionDuration > 0) {
+            // 관리자가 아닌 경우만 역대 기록 업데이트
+            if (!wasAdminMode && state.sessionDuration > 0) {
                 chatRepository.updateAllTimeRecord(
                     userId = state.userId,
                     nickname = state.nickname,
@@ -643,8 +644,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
 
-            // 세션 복구용으로 저장 (하사 이상인 경우에만 의미있음)
-            if (state.sessionDuration >= ElitePreferences.MIN_RESTORE_DURATION_MS) {
+            // 관리자가 아닌 경우만 세션 복구용으로 저장
+            if (!wasAdminMode && state.sessionDuration >= ElitePreferences.MIN_RESTORE_DURATION_MS) {
                 preferences.saveSessionForRestore(state.sessionDuration)
             }
 
@@ -1038,7 +1039,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun logoutAdmin() {
-        _uiState.update { it.copy(isAdminMode = false) }
+        viewModelScope.launch {
+            // 원래 닉네임 복원
+            val originalNickname = preferences.getNickname()
+            _uiState.update {
+                it.copy(
+                    isAdminMode = false,
+                    nickname = originalNickname
+                )
+            }
+        }
     }
 
     /**
