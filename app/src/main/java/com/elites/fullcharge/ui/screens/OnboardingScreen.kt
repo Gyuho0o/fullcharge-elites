@@ -1,13 +1,10 @@
 package com.elites.fullcharge.ui.screens
 
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -15,12 +12,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.elites.fullcharge.ui.theme.*
+import kotlinx.coroutines.launch
 
 data class OnboardingPage(
     val emoji: String,
@@ -51,13 +48,15 @@ private val onboardingPages = listOf(
     )
 )
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun OnboardingScreen(
     onComplete: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var currentPage by remember { mutableIntStateOf(0) }
-    val isLastPage = currentPage == onboardingPages.lastIndex
+    val pagerState = rememberPagerState(pageCount = { onboardingPages.size })
+    val coroutineScope = rememberCoroutineScope()
+    val isLastPage = pagerState.currentPage == onboardingPages.lastIndex
 
     Box(
         modifier = modifier
@@ -80,28 +79,19 @@ fun OnboardingScreen(
                 TextButton(onClick = onComplete) {
                     Text(
                         text = "건너뛰기",
-                        color = TextTertiary,
-                        fontSize = 14.sp
+                        color = TextSecondary,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Medium
                     )
                 }
             }
 
             Spacer(modifier = Modifier.height(40.dp))
 
-            // 페이지 콘텐츠
-            AnimatedContent(
-                targetState = currentPage,
-                transitionSpec = {
-                    if (targetState > initialState) {
-                        slideInHorizontally { it } + fadeIn() togetherWith
-                                slideOutHorizontally { -it } + fadeOut()
-                    } else {
-                        slideInHorizontally { -it } + fadeIn() togetherWith
-                                slideOutHorizontally { it } + fadeOut()
-                    }
-                },
-                modifier = Modifier.weight(1f),
-                label = "pageContent"
+            // 페이지 콘텐츠 (스와이프 가능)
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.weight(1f)
             ) { page ->
                 OnboardingPageContent(
                     page = onboardingPages[page]
@@ -117,10 +107,10 @@ fun OnboardingScreen(
                     Box(
                         modifier = Modifier
                             .padding(horizontal = 4.dp)
-                            .size(if (index == currentPage) 24.dp else 8.dp, 8.dp)
+                            .size(if (index == pagerState.currentPage) 24.dp else 8.dp, 8.dp)
                             .clip(CircleShape)
                             .background(
-                                if (index == currentPage) TossBlue
+                                if (index == pagerState.currentPage) TossBlue
                                 else DividerGray
                             )
                     )
@@ -133,7 +123,9 @@ fun OnboardingScreen(
                     if (isLastPage) {
                         onComplete()
                     } else {
-                        currentPage++
+                        coroutineScope.launch {
+                            pagerState.animateScrollToPage(pagerState.currentPage + 1)
+                        }
                     }
                 },
                 modifier = Modifier

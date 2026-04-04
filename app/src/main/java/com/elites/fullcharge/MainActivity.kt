@@ -104,8 +104,8 @@ class MainActivity : ComponentActivity() {
                         adManager.loadInterstitialAd() // 퇴장 대비 미리 로드
                     } else {
                         풀파워모드종료()
-                        // 복구 가능한 세션이 있으면 보상형 광고 미리 로드
-                        if (uiState.restorableSessionDuration != null) {
+                        // 복구 가능한 세션이 있고, 광고가 필요한 경우에만 보상형 광고 미리 로드
+                        if (uiState.restorableSessionDuration != null && uiState.restoreRequiresAd) {
                             adManager.loadRewardedAd()
                         }
                     }
@@ -167,6 +167,10 @@ class MainActivity : ComponentActivity() {
                                 }
                             )
                         },
+                        onRestoreFree = { previousDuration ->
+                            // 수동 퇴장의 경우 광고 없이 바로 복구
+                            viewModel.enterChatWithRestore(previousDuration)
+                        },
                         onDismissRestore = { viewModel.dismissRestorableSession() },
                         onDismissAchievement = { viewModel.dismissAchievementPopup() },
                         onDismissCrisisEscape = { viewModel.dismissCrisisEscapeCelebration() },
@@ -196,6 +200,7 @@ class MainActivity : ComponentActivity() {
         onVotePoll: (String, Int) -> Unit,
         onExileDismiss: () -> Unit,
         onRestoreWithAd: (Long) -> Unit,
+        onRestoreFree: (Long) -> Unit,
         onDismissRestore: () -> Unit,
         onDismissAchievement: () -> Unit,
         onDismissCrisisEscape: () -> Unit,
@@ -236,7 +241,9 @@ class MainActivity : ComponentActivity() {
                         onlineUserCount = uiState.onlineUserCount,
                         onEnterPortal = onEnterPortal,
                         restorableSessionDuration = uiState.restorableSessionDuration,
+                        restoreRequiresAd = uiState.restoreRequiresAd,
                         onRestoreWithAd = onRestoreWithAd,
+                        onRestoreFree = onRestoreFree,
                         onDismissRestore = onDismissRestore
                     )
                 }

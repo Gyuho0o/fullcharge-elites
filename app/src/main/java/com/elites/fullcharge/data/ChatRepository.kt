@@ -102,8 +102,8 @@ class ChatRepository {
                         )
                         messages.add(chatMessage)
                     } catch (e: Exception) {
-                        e.printStackTrace()
-                        // 파싱 실패한 메시지는 건너뜀
+                        // 파싱 실패한 메시지는 건너뜀 (로그 기록)
+                        android.util.Log.e("ChatRepository", "메시지 파싱 실패: ${child.key}", e)
                     }
                 }
 
@@ -114,7 +114,10 @@ class ChatRepository {
             }
 
             override fun onCancelled(error: DatabaseError) {
-                // 에러 처리
+                // Firebase 에러 로깅
+                android.util.Log.e("ChatRepository", "Firebase 에러: ${error.message}", error.toException())
+                // 빈 리스트라도 전송하여 UI가 멈추지 않도록
+                trySend(emptyList())
             }
         }
 
@@ -141,7 +144,9 @@ class ChatRepository {
             override fun onChildChanged(snapshot: DataSnapshot, previousChildName: String?) {}
             override fun onChildRemoved(snapshot: DataSnapshot) {}
             override fun onChildMoved(snapshot: DataSnapshot, previousChildName: String?) {}
-            override fun onCancelled(error: DatabaseError) {}
+            override fun onCancelled(error: DatabaseError) {
+                android.util.Log.e("ChatRepository", "새 메시지 수신 에러: ${error.message}", error.toException())
+            }
         }
 
         messagesRef.orderByChild("timestamp").limitToLast(1)
@@ -224,7 +229,10 @@ class ChatRepository {
                 trySend(users)
             }
 
-            override fun onCancelled(error: DatabaseError) {}
+            override fun onCancelled(error: DatabaseError) {
+                android.util.Log.e("ChatRepository", "온라인 사용자 조회 에러: ${error.message}", error.toException())
+                trySend(emptyList())
+            }
         }
 
         usersRef.addValueEventListener(listener)

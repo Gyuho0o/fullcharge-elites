@@ -5,44 +5,17 @@ import android.content.Context
 import android.content.Intent
 import android.os.BatteryManager
 
+/**
+ * 배터리 상태 변화 감지용 리시버
+ *
+ * 참고: 퇴장 로직은 MainViewModel에서 10초 카운트다운으로 처리함
+ * 이 리시버는 배터리 상태 변화를 시스템에서 감지하기 위한 용도로만 사용
+ */
 class BatteryReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context?, intent: Intent?) {
-        if (context == null || intent == null) return
-
-        when (intent.action) {
-            Intent.ACTION_POWER_DISCONNECTED -> {
-                // 충전기 분리됨 - 추방 처리가 필요한 경우 브로드캐스트
-                val exileIntent = Intent(ACTION_EXILE_REQUIRED).apply {
-                    setPackage(context.packageName)
-                }
-                context.sendBroadcast(exileIntent)
-            }
-            Intent.ACTION_BATTERY_CHANGED -> {
-                val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
-                val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
-                val batteryPct = if (level >= 0 && scale > 0) {
-                    (level * 100) / scale
-                } else {
-                    100
-                }
-
-                val status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
-                val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
-                        status == BatteryManager.BATTERY_STATUS_FULL
-
-                // 100% 미만이거나 충전 중이 아니면 추방
-                if (batteryPct < 100 || !isCharging) {
-                    val exileIntent = Intent(ACTION_EXILE_REQUIRED).apply {
-                        setPackage(context.packageName)
-                    }
-                    context.sendBroadcast(exileIntent)
-                }
-            }
-        }
-    }
-
-    companion object {
-        const val ACTION_EXILE_REQUIRED = "com.elites.fullcharge.ACTION_EXILE_REQUIRED"
+        // 배터리 상태 변경은 BatteryStatusManager에서 처리
+        // 이 리시버는 앱이 포그라운드에 없을 때 시스템 이벤트를 받기 위한 용도
+        // 실제 퇴장 로직은 MainViewModel의 10초 카운트다운에서 처리
     }
 }
