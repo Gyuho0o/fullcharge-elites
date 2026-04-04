@@ -286,7 +286,7 @@ private fun EliteWelcomeContent(
             label = "userCount"
         ) { count ->
             Text(
-                text = "현재 ${count}명의 엘리트가 대화 중",
+                text = "현재 ${count}명의 전우회원이 대화 중",
                 fontSize = 14.sp,
                 color = TextSecondary
             )
