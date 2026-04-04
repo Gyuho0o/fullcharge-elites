@@ -285,6 +285,7 @@ fun ChatScreen(
                             message.isSystemMessage -> {
                                 SystemMessageItem(
                                     message = message,
+                                    currentUserNickname = currentUserNickname,
                                     onWelcomeTap = { welcomeMessage ->
                                         onSendMessage(welcomeMessage)
                                     }
@@ -936,13 +937,13 @@ private fun RankBadge(rank: EliteRank) {
         EliteRank.MASTER_SERGEANT -> listOf(Color(0xFF1D4ED8), Color(0xFF60A5FA))
         EliteRank.SERGEANT_FIRST -> listOf(Color(0xFF2563EB), Color(0xFF93C5FD))
         EliteRank.STAFF_SERGEANT -> listOf(Color(0xFF3B82F6), Color(0xFFBFDBFE))
-        // 병사 (블루그레이 계열 - 깔끔한 그라데이션)
-        EliteRank.SERGEANT -> listOf(Color(0xFF37474F), Color(0xFF546E7A))       // 병장
-        EliteRank.CORPORAL -> listOf(Color(0xFF455A64), Color(0xFF607D8B))       // 상병
-        EliteRank.PRIVATE_FIRST -> listOf(Color(0xFF546E7A), Color(0xFF78909C))  // 일병
-        EliteRank.PRIVATE_SECOND -> listOf(Color(0xFF607D8B), Color(0xFF90A4AE)) // 이병
-        // 훈련병 (연한 블루그레이)
-        else -> listOf(Color(0xFF78909C), Color(0xFFB0BEC5))
+        // 병사 (옅은 파란색 계열)
+        EliteRank.SERGEANT -> listOf(Color(0xFF5B9BD5), Color(0xFF7AB8E8))       // 병장
+        EliteRank.CORPORAL -> listOf(Color(0xFF6BA8DD), Color(0xFF8BC5F0))       // 상병
+        EliteRank.PRIVATE_FIRST -> listOf(Color(0xFF7BB5E5), Color(0xFF9CD2F8))  // 일병
+        EliteRank.PRIVATE_SECOND -> listOf(Color(0xFF8BC2ED), Color(0xFFADDFFF)) // 이병
+        // 훈련병 (가장 옅은 파란색)
+        else -> listOf(Color(0xFF9BCFF5), Color(0xFFBEE3FF))
     }
 
     Box(
@@ -987,11 +988,6 @@ private fun ChatMessageItem(
     val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
     val timeString = timeFormat.format(Date(message.timestamp))
 
-    var visible by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        visible = true
-    }
-
     // 전설 등급 반짝이 애니메이션
     val infiniteTransition = rememberInfiniteTransition(label = "godShimmer")
     val shimmerOffset by infiniteTransition.animateFloat(
@@ -1015,16 +1011,10 @@ private fun ChatMessageItem(
         label = "glow"
     )
 
-    AnimatedVisibility(
-        visible = visible,
-        enter = fadeIn(tween(200)) + slideInHorizontally(
-            initialOffsetX = { if (isOwnMessage) it else -it }
-        )
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = if (isOwnMessage) Alignment.End else Alignment.Start
     ) {
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalAlignment = if (isOwnMessage) Alignment.End else Alignment.Start
-        ) {
             // 닉네임 + 계급 (모든 메시지에 표시)
             // 고계급(장성) 스파클 효과 포함
             val isGeneral = messageRank.ordinal >= EliteRank.BRIGADIER_GENERAL.ordinal
@@ -1125,13 +1115,13 @@ private fun ChatMessageItem(
                     EliteRank.MASTER_SERGEANT -> Color(0xFF1D4ED8)
                     EliteRank.SERGEANT_FIRST -> Color(0xFF2563EB)
                     EliteRank.STAFF_SERGEANT -> Color(0xFF3B82F6)
-                    // 병사 (블루그레이 계열 - 깔끔한 색상)
-                    EliteRank.SERGEANT -> Color(0xFF455A64)      // 병장: 진한 블루그레이
-                    EliteRank.CORPORAL -> Color(0xFF546E7A)      // 상병: 블루그레이
-                    EliteRank.PRIVATE_FIRST -> Color(0xFF607D8B) // 일병: 미디엄 블루그레이
-                    EliteRank.PRIVATE_SECOND -> Color(0xFF78909C) // 이병: 라이트 블루그레이
-                    // 훈련병 (연한 블루그레이)
-                    EliteRank.TRAINEE -> Color(0xFF90A4AE)
+                    // 병사 (옅은 파란색 계열)
+                    EliteRank.SERGEANT -> Color(0xFF5B9BD5)      // 병장
+                    EliteRank.CORPORAL -> Color(0xFF6BA8DD)      // 상병
+                    EliteRank.PRIVATE_FIRST -> Color(0xFF7BB5E5) // 일병
+                    EliteRank.PRIVATE_SECOND -> Color(0xFF8BC2ED) // 이병
+                    // 훈련병 (가장 옅은 파란색)
+                    EliteRank.TRAINEE -> Color(0xFF9BCFF5)
                 }
 
                 // 모든 계급은 흰색 텍스트 (색상이 있는 버블이므로)
@@ -1427,22 +1417,28 @@ private fun ChatMessageItem(
                 }
             }
         }
-    }
 }
 
 @Composable
 private fun SystemMessageItem(
     message: ChatMessage,
+    currentUserNickname: String = "",  // 현재 유저 닉네임
     onWelcomeTap: ((String) -> Unit)? = null  // 환영 메시지 전송 콜백
 ) {
-    var visible by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        visible = true
-    }
-
     // 메시지 타입에 따른 스타일 결정
     val messageText = message.message
     val isEntryMessage = messageText.contains("합류했습니다")
+
+    // 닉네임 추출 (입장 메시지에서)
+    val nickname = if (isEntryMessage) {
+        messageText.replace("님이 전우회에 합류했습니다", "").trim()
+    } else null
+
+    // 본인 입장 메시지인지 확인
+    val isOwnEntry = nickname == currentUserNickname
+
+    // 환영 가능 여부 (다른 사람 입장 메시지만)
+    val canWelcome = isEntryMessage && !isOwnEntry && onWelcomeTap != null && nickname != null
 
     val (icon, bgColor, textColor, borderColor) = when {
         isEntryMessage -> {
@@ -1463,29 +1459,17 @@ private fun SystemMessageItem(
         }
     }
 
-    // 닉네임 추출 (입장 메시지에서)
-    val nickname = if (isEntryMessage) {
-        messageText.replace("님이 전우회에 합류했습니다", "").trim()
-    } else null
-
-    AnimatedVisibility(
-        visible = visible,
-        enter = fadeIn(tween(300)) + expandVertically()
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 8.dp),
-            contentAlignment = Alignment.Center
-        ) {
             Surface(
                 shape = RoundedCornerShape(20.dp),
                 color = bgColor as Color,
                 border = BorderStroke(1.dp, borderColor as Color),
-                shadowElevation = 1.dp,
-                modifier = if (isEntryMessage && onWelcomeTap != null && nickname != null) {
-                    Modifier.clickable { onWelcomeTap("환영한다 전우여, $nickname!") }
-                } else Modifier
+                shadowElevation = 1.dp
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
@@ -1502,19 +1486,27 @@ private fun SystemMessageItem(
                         color = textColor as Color,
                         fontWeight = FontWeight.Medium
                     )
-                    // 입장 메시지에 터치 힌트 추가
-                    if (isEntryMessage && onWelcomeTap != null) {
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "👆",
-                            fontSize = 12.sp,
-                            modifier = Modifier.alpha(0.6f)
-                        )
-                    }
+                }
+            }
+
+            // 환영하기 버튼 (다른 사람 입장 메시지에만 표시)
+            if (canWelcome) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = StatusGreen,
+                    modifier = Modifier.clickable { onWelcomeTap!!("환영한다 전우여, $nickname!") }
+                ) {
+                    Text(
+                        text = "🎉 환영하기",
+                        fontSize = 11.sp,
+                        color = Color.White,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
                 }
             }
         }
-    }
 }
 
 @Composable

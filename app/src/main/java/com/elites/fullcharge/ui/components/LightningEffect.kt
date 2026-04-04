@@ -316,10 +316,10 @@ private fun DrawScope.drawLightningBolt(bolt: LightningBolt, color: Color) {
         Offset(it.x * size.width, it.y * size.height)
     }
 
-    // 외부 글로우
+    // 외부 글로우 (투명도 낮춤)
     for (i in 0 until scaledPoints.size - 1) {
         drawLine(
-            color = color.copy(alpha = 0.3f),
+            color = color.copy(alpha = 0.15f),
             start = scaledPoints[i],
             end = scaledPoints[i + 1],
             strokeWidth = 12f,
@@ -327,10 +327,10 @@ private fun DrawScope.drawLightningBolt(bolt: LightningBolt, color: Color) {
         )
     }
 
-    // 메인 번개
+    // 메인 번개 (투명도 낮춤)
     for (i in 0 until scaledPoints.size - 1) {
         drawLine(
-            color = color.copy(alpha = 0.8f),
+            color = color.copy(alpha = 0.5f),
             start = scaledPoints[i],
             end = scaledPoints[i + 1],
             strokeWidth = 4f,
@@ -338,10 +338,10 @@ private fun DrawScope.drawLightningBolt(bolt: LightningBolt, color: Color) {
         )
     }
 
-    // 밝은 중심
+    // 밝은 중심 (투명도 낮춤)
     for (i in 0 until scaledPoints.size - 1) {
         drawLine(
-            color = Color.White.copy(alpha = 0.9f),
+            color = Color.White.copy(alpha = 0.6f),
             start = scaledPoints[i],
             end = scaledPoints[i + 1],
             strokeWidth = 2f,
@@ -349,7 +349,7 @@ private fun DrawScope.drawLightningBolt(bolt: LightningBolt, color: Color) {
         )
     }
 
-    // 가지들
+    // 가지들 (투명도 낮춤)
     bolt.branches.forEach { branch ->
         val branchStart = scaledPoints.getOrNull(
             bolt.points.indexOfFirst { it.x == branch.firstOrNull()?.x }
@@ -362,7 +362,7 @@ private fun DrawScope.drawLightningBolt(bolt: LightningBolt, color: Color) {
                 branchStart.y + point.y * size.height * 0.3f
             )
             drawLine(
-                color = color.copy(alpha = 0.5f),
+                color = color.copy(alpha = 0.3f),
                 start = prevPoint,
                 end = scaled,
                 strokeWidth = 2f,
@@ -383,27 +383,27 @@ private fun DrawScope.drawSmallBolt(bolt: SmallBolt) {
             startOffset.y + point.y * size.height
         )
 
-        // 글로우
+        // 글로우 (투명도 낮춤)
         drawLine(
-            color = TossBlueLight.copy(alpha = bolt.alpha * 0.4f),
+            color = TossBlueLight.copy(alpha = bolt.alpha * 0.2f),
             start = prevPoint,
             end = scaled,
             strokeWidth = 8f,
             cap = StrokeCap.Round
         )
 
-        // 메인
+        // 메인 (투명도 낮춤)
         drawLine(
-            color = TossBlueLight.copy(alpha = bolt.alpha * 0.8f),
+            color = TossBlueLight.copy(alpha = bolt.alpha * 0.5f),
             start = prevPoint,
             end = scaled,
             strokeWidth = 3f,
             cap = StrokeCap.Round
         )
 
-        // 밝은 중심
+        // 밝은 중심 (투명도 낮춤)
         drawLine(
-            color = Color.White.copy(alpha = bolt.alpha),
+            color = Color.White.copy(alpha = bolt.alpha * 0.6f),
             start = prevPoint,
             end = scaled,
             strokeWidth = 1.5f,
