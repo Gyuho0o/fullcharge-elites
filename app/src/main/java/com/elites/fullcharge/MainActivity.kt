@@ -27,15 +27,18 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import android.view.WindowManager
 import androidx.core.view.WindowCompat
 import com.elites.fullcharge.ad.AdManager
+import com.elites.fullcharge.data.AppConfigRepository
 import com.elites.fullcharge.ui.AppScreen
 import com.elites.fullcharge.ui.MainViewModel
 import com.elites.fullcharge.ui.screens.ChatScreen
 import com.elites.fullcharge.ui.screens.ExileScreen
+import com.elites.fullcharge.ui.screens.ForceUpdateScreen
 import com.elites.fullcharge.ui.screens.GatekeeperScreen
 import com.elites.fullcharge.ui.screens.OnboardingScreen
 import com.elites.fullcharge.ui.theme.ElitesTheme
 import com.elites.fullcharge.util.SoundManager
 import com.google.android.gms.ads.MobileAds
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -80,6 +83,46 @@ class MainActivity : ComponentActivity() {
         setContent {
             ElitesTheme {
                 val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+                var needsUpdate by remember { mutableStateOf(false) }
+                val coroutineScope = rememberCoroutineScope()
+
+                // 앱 시작 시 버전 체크
+                LaunchedEffect(Unit) {
+                    coroutineScope.launch {
+                        val appConfigRepository = AppConfigRepository()
+                        val minVersionCode = appConfigRepository.getMinVersionCode()
+                        val currentVersionCode = packageManager.getPackageInfo(packageName, 0).let {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                                it.longVersionCode.toInt()
+                            } else {
+                                @Suppress("DEPRECATION")
+                                it.versionCode
+                            }
+                        }
+                        needsUpdate = minVersionCode > currentVersionCode
+                    }
+                }
+
+                // 강제 업데이트 필요 시
+                if (needsUpdate) {
+                    ForceUpdateScreen(
+                        onUpdateClick = {
+                            // Play Store로 이동
+                            val intent = Intent(Intent.ACTION_VIEW).apply {
+                                data = Uri.parse("market://details?id=$packageName")
+                            }
+                            try {
+                                startActivity(intent)
+                            } catch (e: Exception) {
+                                // Play Store 앱이 없으면 웹으로
+                                startActivity(Intent(Intent.ACTION_VIEW).apply {
+                                    data = Uri.parse("https://play.google.com/store/apps/details?id=$packageName")
+                                })
+                            }
+                        }
+                    )
+                    return@ElitesTheme
+                }
 
                 // 화면 전환 시 사운드 재생
                 LaunchedEffect(uiState.currentScreen) {
