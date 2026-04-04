@@ -21,6 +21,7 @@ data class ChatMessage(
     val pollQuestion: String? = null,
     val pollOptions: List<String> = emptyList(),
     val pollVotes: Map<String, List<String>> = emptyMap(),  // 옵션 -> 투표한 userId 목록
+    val pollEndTime: Long = 0L,  // 투표 종료 시간 (0이면 무제한)
     // 멘션된 사용자 ID 목록
     val mentions: List<String> = emptyList(),
     // 콘텐츠 경고 메시지 (스팸/광고 의심 등)
@@ -32,7 +33,7 @@ data class ChatMessage(
         const val BOT_NICKNAME = "배터리요정"
     }
     // Firebase를 위한 빈 생성자
-    constructor() : this("", "", "", "", 0L, EliteRank.TRAINEE.name, false, false, emptyList(), null, null, null, emptyMap(), false, null, emptyList(), emptyMap(), emptyList(), null)
+    constructor() : this("", "", "", "", 0L, EliteRank.TRAINEE.name, false, false, emptyList(), null, null, null, emptyMap(), false, null, emptyList(), emptyMap(), 0L, emptyList(), null)
 
     fun toMap(): Map<String, Any?> = mapOf(
         "id" to id,
@@ -52,6 +53,7 @@ data class ChatMessage(
         "pollQuestion" to pollQuestion,
         "pollOptions" to pollOptions,
         "pollVotes" to pollVotes,
+        "pollEndTime" to pollEndTime,
         "mentions" to mentions,
         "warning" to warning
     )
@@ -62,4 +64,14 @@ data class ChatMessage(
         val readCount = readBy.size
         return maxOf(0, onlineUserCount - readCount - 1)  // -1은 본인
     }
+
+    // 투표가 종료되었는지 확인
+    val isPollEnded: Boolean
+        get() = isPoll && pollEndTime > 0 && System.currentTimeMillis() > pollEndTime
+
+    // 투표 남은 시간 (밀리초)
+    val pollRemainingTime: Long
+        get() = if (isPoll && pollEndTime > 0) {
+            maxOf(0, pollEndTime - System.currentTimeMillis())
+        } else 0L
 }

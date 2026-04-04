@@ -63,6 +63,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import com.elites.fullcharge.data.Achievement
+import com.elites.fullcharge.data.AllTimeRecord
 import com.elites.fullcharge.data.BatteryState
 import com.elites.fullcharge.data.ChatEvent
 import com.elites.fullcharge.data.ChatMessage
@@ -88,6 +89,7 @@ fun ChatScreen(
     batteryState: BatteryState,
     messages: List<ChatMessage>,
     onlineUsers: List<EliteUser>,
+    allTimeRecords: List<AllTimeRecord> = emptyList(),
     currentUserId: String,
     currentUserNickname: String,
     sessionDuration: Long,
@@ -101,7 +103,7 @@ fun ChatScreen(
     onReply: (ChatMessage) -> Unit = {},
     onClearReply: () -> Unit = {},
     onToggleReaction: (String, String) -> Unit = { _, _ -> },
-    onCreatePoll: (String, List<String>) -> Unit = { _, _ -> },
+    onCreatePoll: (String, List<String>, Int) -> Unit = { _, _, _ -> },
     onVotePoll: (String, Int) -> Unit = { _, _ -> },
     isInDanger: Boolean = false,
     dangerCountdown: Int = 0,
@@ -123,6 +125,11 @@ fun ChatScreen(
     isHourlyChime: Boolean = false,
     isMidnightSpecial: Boolean = false,
     onDismissTimeEvent: () -> Unit = {},
+    // 관리자 모드
+    isAdminMode: Boolean = false,
+    onKickUser: (String, String) -> Unit = { _, _ -> },
+    onChangeUserRank: (String, String, EliteRank) -> Unit = { _, _, _ -> },
+    onSendAdminNotice: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var messageInput by remember { mutableStateOf("") }
@@ -139,6 +146,11 @@ fun ChatScreen(
     var messageSentTrigger by remember { mutableIntStateOf(0) }
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+
+    // 관리자 패널
+    var showAdminPanel by remember { mutableStateOf(false) }
+    var selectedUserForAdmin by remember { mutableStateOf<EliteUser?>(null) }
+    var showAdminNoticeDialog by remember { mutableStateOf(false) }
 
     // 필터 에러 메시지 표시
     LaunchedEffect(filterErrorMessage) {
@@ -280,8 +292,9 @@ fun ChatScreen(
                 enter = expandVertically() + fadeIn(),
                 exit = shrinkVertically() + fadeOut()
             ) {
-                실시간리더보드(
+                스와이프리더보드(
                     사용자들 = onlineUsers,
+                    역대기록들 = allTimeRecords,
                     현재사용자ID = currentUserId,
                     onCollapse = { showLeaderboard = false },
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
@@ -463,8 +476,8 @@ fun ChatScreen(
         if (showPollDialog) {
             CreatePollDialog(
                 onDismiss = { showPollDialog = false },
-                onCreatePoll = { question, options ->
-                    onCreatePoll(question, options)
+                onCreatePoll = { question, options, durationMinutes ->
+                    onCreatePoll(question, options, durationMinutes)
                     showPollDialog = false
                 }
             )
@@ -478,6 +491,50 @@ fun ChatScreen(
                     showLeaveDialog = false
                     onLeaveChat()
                 }
+            )
+        }
+
+        // 관리자 플로팅 버튼 (상단 우측에 작게 표시)
+        if (isAdminMode) {
+            SmallFloatingActionButton(
+                onClick = { showAdminPanel = true },
+                containerColor = StatusRed.copy(alpha = 0.8f),
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 80.dp, end = 8.dp)
+                    .size(40.dp)
+            ) {
+                Text("🔐", fontSize = 16.sp)
+            }
+        }
+
+        // 관리자 패널 다이얼로그
+        if (showAdminPanel) {
+            AdminPanelDialog(
+                onlineUsers = onlineUsers,
+                currentUserId = currentUserId,
+                onKickUser = { user ->
+                    onKickUser(user.userId, user.nickname)
+                    showAdminPanel = false
+                },
+                onChangeUserRank = { user, rank ->
+                    onChangeUserRank(user.userId, user.nickname, rank)
+                    showAdminPanel = false
+                },
+                onSendNotice = { showAdminNoticeDialog = true },
+                onDismiss = { showAdminPanel = false }
+            )
+        }
+
+        // 관리자 공지 다이얼로그
+        if (showAdminNoticeDialog) {
+            AdminNoticeDialog(
+                onSend = { notice ->
+                    onSendAdminNotice(notice)
+                    showAdminNoticeDialog = false
+                    showAdminPanel = false
+                },
+                onDismiss = { showAdminNoticeDialog = false }
             )
         }
 
@@ -2279,6 +2336,34 @@ private fun PollMessageItem(
         userIds.contains(currentUserId)
     }?.key?.toIntOrNull()
 
+    // 투표 종료 여부 및 남은 시간 계산
+    var remainingTimeText by remember { mutableStateOf("") }
+    var isPollEnded by remember { mutableStateOf(message.isPollEnded) }
+
+    // 1초마다 남은 시간 업데이트
+    LaunchedEffect(message.pollEndTime) {
+        if (message.pollEndTime > 0) {
+            while (true) {
+                val remaining = message.pollEndTime - System.currentTimeMillis()
+                if (remaining <= 0) {
+                    isPollEnded = true
+                    remainingTimeText = "종료됨"
+                    break
+                } else {
+                    isPollEnded = false
+                    val seconds = (remaining / 1000) % 60
+                    val minutes = (remaining / 1000 / 60) % 60
+                    remainingTimeText = if (minutes > 0) {
+                        "${minutes}분 ${seconds}초 남음"
+                    } else {
+                        "${seconds}초 남음"
+                    }
+                }
+                kotlinx.coroutines.delay(1000)
+            }
+        }
+    }
+
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { visible = true }
 
@@ -2308,21 +2393,37 @@ private fun PollMessageItem(
                 // 투표 카드
                 Card(
                     shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isPollEnded) BackgroundGray else Color.White
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = if (isPollEnded) 0.dp else 2.dp)
                 ) {
                     Column(
                         modifier = Modifier.padding(16.dp)
                     ) {
                         // 투표 아이콘 + 질문
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(text = "🗳️", fontSize = 18.sp)
+                            Text(
+                                text = if (isPollEnded) "🔒" else "🗳️",
+                                fontSize = 18.sp
+                            )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = message.pollQuestion ?: "",
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                color = TextPrimary
+                                color = if (isPollEnded) TextSecondary else TextPrimary
+                            )
+                        }
+
+                        // 남은 시간 또는 종료 표시
+                        if (message.pollEndTime > 0) {
+                            Text(
+                                text = remainingTimeText,
+                                fontSize = 11.sp,
+                                color = if (isPollEnded) StatusRed else StatusGreen,
+                                fontWeight = FontWeight.Medium,
+                                modifier = Modifier.padding(top = 4.dp)
                             )
                         }
 
@@ -2339,8 +2440,18 @@ private fun PollMessageItem(
                                     .fillMaxWidth()
                                     .padding(vertical = 4.dp)
                                     .clip(RoundedCornerShape(8.dp))
-                                    .background(if (isVoted) TossBlue.copy(alpha = 0.1f) else BackgroundGray)
-                                    .clickable { onVote(index) }
+                                    .background(
+                                        when {
+                                            isPollEnded && isVoted -> TossBlue.copy(alpha = 0.1f)
+                                            isPollEnded -> DividerGray
+                                            isVoted -> TossBlue.copy(alpha = 0.1f)
+                                            else -> BackgroundGray
+                                        }
+                                    )
+                                    .then(
+                                        if (isPollEnded) Modifier
+                                        else Modifier.clickable { onVote(index) }
+                                    )
                             ) {
                                 // 투표율 배경 바
                                 Box(
@@ -2364,13 +2475,23 @@ private fun PollMessageItem(
                                     Text(
                                         text = option,
                                         fontSize = 14.sp,
-                                        color = if (isVoted) TossBlue else TextPrimary,
+                                        color = when {
+                                            isPollEnded && isVoted -> TossBlue
+                                            isPollEnded -> TextTertiary
+                                            isVoted -> TossBlue
+                                            else -> TextPrimary
+                                        },
                                         fontWeight = if (isVoted) FontWeight.Medium else FontWeight.Normal
                                     )
                                     Text(
                                         text = "${votePercentage}%",
                                         fontSize = 12.sp,
-                                        color = if (isVoted) TossBlue else TextSecondary
+                                        color = when {
+                                            isPollEnded && isVoted -> TossBlue
+                                            isPollEnded -> TextTertiary
+                                            isVoted -> TossBlue
+                                            else -> TextSecondary
+                                        }
                                     )
                                 }
                             }
@@ -2401,10 +2522,15 @@ private fun PollMessageItem(
 @Composable
 private fun CreatePollDialog(
     onDismiss: () -> Unit,
-    onCreatePoll: (String, List<String>) -> Unit
+    onCreatePoll: (String, List<String>, Int) -> Unit
 ) {
     var question by remember { mutableStateOf("") }
     var options by remember { mutableStateOf(listOf("", "")) }
+
+    // 투표 지속 시간 옵션
+    val durationOptions = listOf(1, 3, 5, 10)
+    var selectedDuration by remember { mutableIntStateOf(5) }  // 기본 5분
+    var showDurationDropdown by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -2431,6 +2557,54 @@ private fun CreatePollDialog(
                     ),
                     singleLine = true
                 )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // 투표 지속 시간 선택
+                Text(
+                    text = "투표 종료 시간",
+                    fontSize = 13.sp,
+                    color = TextSecondary
+                )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Box {
+                    OutlinedButton(
+                        onClick = { showDurationDropdown = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = TossBlue
+                        )
+                    ) {
+                        Text("${selectedDuration}분 후 종료")
+                        Spacer(modifier = Modifier.weight(1f))
+                        Icon(
+                            imageVector = Icons.Default.KeyboardArrowDown,
+                            contentDescription = null
+                        )
+                    }
+
+                    DropdownMenu(
+                        expanded = showDurationDropdown,
+                        onDismissRequest = { showDurationDropdown = false }
+                    ) {
+                        durationOptions.forEach { duration ->
+                            DropdownMenuItem(
+                                text = { Text("${duration}분") },
+                                onClick = {
+                                    selectedDuration = duration
+                                    showDurationDropdown = false
+                                },
+                                leadingIcon = {
+                                    if (duration == selectedDuration) {
+                                        Text("✓", color = TossBlue)
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -2494,7 +2668,7 @@ private fun CreatePollDialog(
             TextButton(
                 onClick = {
                     if (isValid) {
-                        onCreatePoll(question, options.filter { it.isNotBlank() })
+                        onCreatePoll(question, options.filter { it.isNotBlank() }, selectedDuration)
                     }
                 },
                 enabled = isValid
@@ -3509,4 +3683,240 @@ private fun PersonalMilestoneOverlay(
             }
         }
     }
+}
+
+// ========== 관리자 패널 ==========
+
+/**
+ * 관리자 패널 다이얼로그
+ */
+@Composable
+private fun AdminPanelDialog(
+    onlineUsers: List<EliteUser>,
+    currentUserId: String,
+    onKickUser: (EliteUser) -> Unit,
+    onChangeUserRank: (EliteUser, EliteRank) -> Unit,
+    onSendNotice: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    var selectedUser by remember { mutableStateOf<EliteUser?>(null) }
+    var showRankDialog by remember { mutableStateOf(false) }
+
+    // 계급 선택 다이얼로그
+    if (showRankDialog && selectedUser != null) {
+        RankSelectionDialog(
+            user = selectedUser!!,
+            onSelectRank = { rank ->
+                onChangeUserRank(selectedUser!!, rank)
+                showRankDialog = false
+            },
+            onDismiss = { showRankDialog = false }
+        )
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = BackgroundWhite,
+        title = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("🔐", fontSize = 24.sp)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "관리자 패널",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 20.sp,
+                    color = StatusRed
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 400.dp)
+            ) {
+                // 공지 버튼
+                Button(
+                    onClick = onSendNotice,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = TossBlue),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("공지 보내기")
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    text = "접속 중인 사용자 (${onlineUsers.size}명)",
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 14.sp,
+                    color = TextSecondary
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // 사용자 목록
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    items(onlineUsers.filter { it.userId != currentUserId }) { user ->
+                        AdminUserItem(
+                            user = user,
+                            onKick = { onKickUser(user) },
+                            onChangeRank = {
+                                selectedUser = user
+                                showRankDialog = true
+                            }
+                        )
+                    }
+                }
+
+                if (onlineUsers.filter { it.userId != currentUserId }.isEmpty()) {
+                    Text(
+                        text = "다른 사용자가 없습니다",
+                        fontSize = 14.sp,
+                        color = TextTertiary,
+                        modifier = Modifier.padding(vertical = 16.dp)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("닫기", color = TextSecondary)
+            }
+        }
+    )
+}
+
+@Composable
+private fun AdminUserItem(
+    user: EliteUser,
+    onKick: () -> Unit,
+    onChangeRank: () -> Unit
+) {
+    val rank = EliteRank.fromDuration(user.sessionDuration)
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = user.nickname,
+                fontWeight = FontWeight.Medium,
+                fontSize = 14.sp,
+                color = TextPrimary
+            )
+            Text(
+                text = rank.koreanName,
+                fontSize = 12.sp,
+                color = TextSecondary
+            )
+        }
+
+        // 계급 변경 버튼
+        IconButton(onClick = onChangeRank) {
+            Text("🎖️", fontSize = 20.sp)
+        }
+
+        // 강퇴 버튼
+        IconButton(onClick = onKick) {
+            Text("🚪", fontSize = 20.sp)
+        }
+    }
+}
+
+@Composable
+private fun RankSelectionDialog(
+    user: EliteUser,
+    onSelectRank: (EliteRank) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = BackgroundWhite,
+        title = {
+            Text(
+                text = "${user.nickname} 계급 변경",
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp
+            )
+        },
+        text = {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 300.dp)
+            ) {
+                items(EliteRank.entries.toList()) { rank ->
+                    TextButton(
+                        onClick = { onSelectRank(rank) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "${rank.koreanName} (${rank.minMinutes}분 이상)",
+                            color = TextPrimary
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("취소", color = TextSecondary)
+            }
+        }
+    )
+}
+
+@Composable
+private fun AdminNoticeDialog(
+    onSend: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var notice by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = BackgroundWhite,
+        title = {
+            Text(
+                text = "📢 공지 보내기",
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp
+            )
+        },
+        text = {
+            OutlinedTextField(
+                value = notice,
+                onValueChange = { notice = it },
+                label = { Text("공지 내용") },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 3,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = TossBlue,
+                    focusedLabelColor = TossBlue
+                )
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = { if (notice.isNotBlank()) onSend(notice) },
+                colors = ButtonDefaults.buttonColors(containerColor = TossBlue)
+            ) {
+                Text("보내기")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("취소", color = TextSecondary)
+            }
+        }
+    )
 }

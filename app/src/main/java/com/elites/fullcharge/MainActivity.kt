@@ -170,8 +170,8 @@ class MainActivity : ComponentActivity() {
                         onToggleReaction = { messageId, emoji ->
                             viewModel.toggleReaction(messageId, emoji)
                         },
-                        onCreatePoll = { question, options ->
-                            viewModel.createPoll(question, options)
+                        onCreatePoll = { question, options, durationMinutes ->
+                            viewModel.createPoll(question, options, durationMinutes)
                         },
                         onVotePoll = { messageId, optionIndex ->
                             viewModel.votePoll(messageId, optionIndex)
@@ -199,7 +199,16 @@ class MainActivity : ComponentActivity() {
                         onDismissCrisisEscape = { viewModel.dismissCrisisEscapeCelebration() },
                         onDismissChatEvent = { viewModel.dismissChatEvent() },
                         onDismissTimeEvent = { viewModel.dismissTimeEvent() },
-                        bannerAdContent = { adManager.BannerAd() }
+                        bannerAdContent = { adManager.BannerAd() },
+                        // 관리자 모드
+                        onAdminTapDetected = { viewModel.showAdminLoginDialog() },
+                        onAdminLogin = { password -> viewModel.tryAdminLogin(password) },
+                        onDismissAdminDialog = { viewModel.dismissAdminLoginDialog() },
+                        onEnterAsAdmin = { viewModel.enterChatAsAdmin() },
+                        onAdminLogout = { viewModel.logoutAdmin() },
+                        onKickUser = { userId, nickname -> viewModel.kickUser(userId, nickname) },
+                        onChangeUserRank = { userId, nickname, rank -> viewModel.changeUserRank(userId, nickname, rank) },
+                        onSendAdminNotice = { message -> viewModel.sendAdminNotice(message) }
                     )
                     }
                 }
@@ -219,7 +228,7 @@ class MainActivity : ComponentActivity() {
         onReply: (com.elites.fullcharge.data.ChatMessage) -> Unit,
         onClearReply: () -> Unit,
         onToggleReaction: (String, String) -> Unit,
-        onCreatePoll: (String, List<String>) -> Unit,
+        onCreatePoll: (String, List<String>, Int) -> Unit,
         onVotePoll: (String, Int) -> Unit,
         onExileDismiss: () -> Unit,
         onRestoreWithAd: (Long) -> Unit,
@@ -228,7 +237,16 @@ class MainActivity : ComponentActivity() {
         onDismissCrisisEscape: () -> Unit,
         onDismissChatEvent: () -> Unit,
         onDismissTimeEvent: () -> Unit,
-        bannerAdContent: @Composable () -> Unit
+        bannerAdContent: @Composable () -> Unit,
+        // 관리자 모드
+        onAdminTapDetected: () -> Unit,
+        onAdminLogin: (String) -> Boolean,
+        onDismissAdminDialog: () -> Unit,
+        onEnterAsAdmin: () -> Unit,
+        onAdminLogout: () -> Unit,
+        onKickUser: (String, String) -> Unit,
+        onChangeUserRank: (String, String, com.elites.fullcharge.data.EliteRank) -> Unit,
+        onSendAdminNotice: (String) -> Unit
     ) {
         AnimatedContent(
             targetState = uiState.currentScreen,
@@ -264,7 +282,15 @@ class MainActivity : ComponentActivity() {
                         onEnterPortal = onEnterPortal,
                         restorableSessionDuration = uiState.restorableSessionDuration,
                         onRestoreWithAd = onRestoreWithAd,
-                        onDismissRestore = onDismissRestore
+                        onDismissRestore = onDismissRestore,
+                        // 관리자 모드
+                        isAdminMode = uiState.isAdminMode,
+                        showAdminLoginDialog = uiState.showAdminLoginDialog,
+                        onAdminTapDetected = onAdminTapDetected,
+                        onAdminLogin = onAdminLogin,
+                        onDismissAdminDialog = onDismissAdminDialog,
+                        onEnterAsAdmin = onEnterAsAdmin,
+                        onAdminLogout = onAdminLogout
                     )
                 }
                 AppScreen.CHAT -> {
@@ -272,6 +298,7 @@ class MainActivity : ComponentActivity() {
                         batteryState = uiState.batteryState,
                         messages = uiState.messages,
                         onlineUsers = uiState.onlineUsers,
+                        allTimeRecords = uiState.allTimeRecords,
                         currentUserId = uiState.userId,
                         currentUserNickname = uiState.nickname,
                         sessionDuration = uiState.sessionDuration,
@@ -301,7 +328,12 @@ class MainActivity : ComponentActivity() {
                         personalHourMilestone = uiState.personalHourMilestone,
                         isHourlyChime = uiState.isHourlyChime,
                         isMidnightSpecial = uiState.isMidnightSpecial,
-                        onDismissTimeEvent = onDismissTimeEvent
+                        onDismissTimeEvent = onDismissTimeEvent,
+                        // 관리자 모드
+                        isAdminMode = uiState.isAdminMode,
+                        onKickUser = onKickUser,
+                        onChangeUserRank = onChangeUserRank,
+                        onSendAdminNotice = onSendAdminNotice
                     )
                 }
                 AppScreen.EXILE -> {

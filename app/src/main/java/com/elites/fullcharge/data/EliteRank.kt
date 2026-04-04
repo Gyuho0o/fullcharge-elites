@@ -168,3 +168,26 @@ data class EliteUser(
     val formattedDuration: String
         get() = EliteRank.fromDurationFormatted(sessionDuration)
 }
+
+/**
+ * 역대 최장 기록
+ */
+data class AllTimeRecord(
+    val oderId: String = "",
+    val nickname: String = "",
+    val durationMillis: Long = 0L,
+    val achievedAt: Long = 0L
+) {
+    val rank: EliteRank
+        get() = EliteRank.fromDuration(durationMillis)
+
+    val formattedDuration: String
+        get() = EliteRank.fromDurationFormatted(durationMillis)
+
+    fun toMap(): Map<String, Any?> = mapOf(
+        "userId" to oderId,
+        "nickname" to nickname,
+        "durationMillis" to durationMillis,
+        "achievedAt" to achievedAt
+    )
+}

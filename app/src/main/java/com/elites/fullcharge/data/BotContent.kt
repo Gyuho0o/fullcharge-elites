@@ -12,478 +12,200 @@ data class BotCharacter(
 )
 
 /**
- * 봇 캐릭터 목록
+ * 봇 캐릭터 생성기 - 시스템 기본 닉네임 형식과 동일하게 생성
  */
 object BotCharacters {
-    val CHUNGCHUNG = BotCharacter("bot_chungchung", "충충이", EliteRank.STAFF_SERGEANT)
-    val BBANBAN = BotCharacter("bot_bbanban", "빵빵이", EliteRank.SERGEANT)
+    // 시스템 기본 닉네임 형식과 동일: "형용사 동물"
+    private val adjectives = listOf(
+        "행복한", "즐거운", "신나는", "편안한", "여유로운",
+        "활기찬", "기분좋은", "상쾌한", "따뜻한", "포근한",
+        "용감한", "씩씩한", "당당한", "멋진", "귀여운",
+        "졸린", "배고픈", "심심한", "설레는", "두근두근"
+    )
 
-    val all = listOf(CHUNGCHUNG, BBANBAN)
+    private val nouns = listOf(
+        "고양이", "강아지", "토끼", "햄스터", "판다",
+        "펭귄", "북극곰", "수달", "라쿤", "다람쥐",
+        "여우", "코알라", "기린", "사자", "호랑이",
+        "돌고래", "물개", "올빼미", "부엉이", "참새"
+    )
 
-    fun random(): BotCharacter = all.random()
+    /**
+     * 시스템 기본 닉네임 형식으로 랜덤 생성
+     */
+    private fun generateRandomNickname(): String {
+        return "${adjectives.random()} ${nouns.random()}"
+    }
+
+    /**
+     * 랜덤 닉네임과 랜덤 계급으로 새 캐릭터 생성
+     */
+    fun random(): BotCharacter {
+        val nickname = generateRandomNickname()
+        // 낮은 계급 위주로 (더 자연스럽게)
+        val rank = listOf(
+            EliteRank.TRAINEE, EliteRank.TRAINEE,
+            EliteRank.PRIVATE_SECOND, EliteRank.PRIVATE_SECOND,
+            EliteRank.PRIVATE_FIRST, EliteRank.PRIVATE_FIRST,
+            EliteRank.CORPORAL, EliteRank.CORPORAL,
+            EliteRank.SERGEANT,
+            EliteRank.STAFF_SERGEANT
+        ).random()
+        return BotCharacter(
+            id = "bot_${System.nanoTime()}",
+            nickname = nickname,
+            rank = rank
+        )
+    }
 }
-
-/**
- * 2인 대화 시나리오
- */
-data class DialogueScenario(
-    val id: String,
-    val exchanges: List<DialogueExchange>
-)
-
-data class DialogueExchange(
-    val speaker: BotCharacter,
-    val message: String,
-    val delayMs: Long = 2000  // 이전 메시지 후 대기 시간
-)
-
-/**
- * 유저 반응 트리거
- */
-data class UserReactionTrigger(
-    val keywords: List<String>,
-    val responses: List<String>,
-    val responder: BotCharacter? = null  // null이면 랜덤 봇
-)
 
 /**
  * 봇 콘텐츠 타입
  */
 sealed class BotContent {
-    data class FunMessage(val message: String, val character: BotCharacter) : BotContent()
-    data class TopicSuggestion(val topic: String, val character: BotCharacter) : BotContent()
-    data class Dialogue(val scenario: DialogueScenario) : BotContent()
-    data class Quiz(
-        val id: String,
-        val question: String,
-        val options: List<String>,
-        val correctIndex: Int,
-        val explanation: String,
-        val character: BotCharacter = BotCharacters.CHUNGCHUNG
-    ) : BotContent()
+    data class SimpleMessage(val message: String, val character: BotCharacter) : BotContent()
+    data class ReplyMessage(val message: String, val character: BotCharacter) : BotContent()
 }
 
 /**
- * 봇 콘텐츠 저장소
+ * 봇 콘텐츠 저장소 - 더 자연스러운 버전
  */
 object BotContentRepository {
 
-    // 2인 대화 시나리오
-    private val dialogueScenarios = listOf(
-        DialogueScenario(
-            id = "greeting",
-            exchanges = listOf(
-                DialogueExchange(BotCharacters.CHUNGCHUNG, "야 빵빵아, 여기 진짜 조용하다"),
-                DialogueExchange(BotCharacters.BBANBAN, "그러게... 다들 충전 중인가?", 2500),
-                DialogueExchange(BotCharacters.CHUNGCHUNG, "우리라도 얘기하자 ㅋㅋ", 2000)
-            )
-        ),
-        DialogueScenario(
-            id = "battery_talk",
-            exchanges = listOf(
-                DialogueExchange(BotCharacters.BBANBAN, "충충아 너 지금 몇 퍼야?"),
-                DialogueExchange(BotCharacters.CHUNGCHUNG, "당연히 100%지! 여기 있잖아", 2000),
-                DialogueExchange(BotCharacters.BBANBAN, "ㅋㅋㅋ 그것도 그렇네", 1500)
-            )
-        ),
-        DialogueScenario(
-            id = "survival",
-            exchanges = listOf(
-                DialogueExchange(BotCharacters.CHUNGCHUNG, "오늘 몇 명이나 나갔대?"),
-                DialogueExchange(BotCharacters.BBANBAN, "아까 한 명 나가는 거 봤어 ㅋㅋ", 2500),
-                DialogueExchange(BotCharacters.CHUNGCHUNG, "ㅋㅋㅋ 불쌍...", 2000),
-                DialogueExchange(BotCharacters.BBANBAN, "우린 끝까지 살아남자!", 2000)
-            )
-        ),
-        DialogueScenario(
-            id = "bored",
-            exchanges = listOf(
-                DialogueExchange(BotCharacters.BBANBAN, "심심해..."),
-                DialogueExchange(BotCharacters.CHUNGCHUNG, "나도... 뭐 재밌는 얘기 없어?", 2000),
-                DialogueExchange(BotCharacters.BBANBAN, "음... 아 참! 오늘 점심 뭐 먹었어?", 2500),
-                DialogueExchange(BotCharacters.CHUNGCHUNG, "나 라면! 너는?", 2000),
-                DialogueExchange(BotCharacters.BBANBAN, "나도 라면 ㅋㅋㅋ", 1500)
-            )
-        ),
-        DialogueScenario(
-            id = "rank",
-            exchanges = listOf(
-                DialogueExchange(BotCharacters.CHUNGCHUNG, "빵빵아 너 계급 뭐야?"),
-                DialogueExchange(BotCharacters.BBANBAN, "나 병장인데? 왜?", 2000),
-                DialogueExchange(BotCharacters.CHUNGCHUNG, "ㅋㅋ 난 하사다~", 2000),
-                DialogueExchange(BotCharacters.BBANBAN, "에이 자랑하네", 1500)
-            )
-        ),
-        DialogueScenario(
-            id = "waiting",
-            exchanges = listOf(
-                DialogueExchange(BotCharacters.BBANBAN, "아 충전 언제 다 되냐..."),
-                DialogueExchange(BotCharacters.CHUNGCHUNG, "뭔 소리야 넌 이미 100%잖아", 2500),
-                DialogueExchange(BotCharacters.BBANBAN, "아 맞다 ㅋㅋㅋ 습관적으로", 2000)
-            )
-        ),
-        DialogueScenario(
-            id = "introduce",
-            exchanges = listOf(
-                DialogueExchange(BotCharacters.CHUNGCHUNG, "혹시 새로 오신 분 있어요?"),
-                DialogueExchange(BotCharacters.BBANBAN, "있으면 말 걸어주세요~", 2000),
-                DialogueExchange(BotCharacters.CHUNGCHUNG, "저희 안 물어요 ㅋㅋ", 2000)
-            )
-        ),
-        DialogueScenario(
-            id = "question",
-            exchanges = listOf(
-                DialogueExchange(BotCharacters.BBANBAN, "충충아 심심한데 퀴즈 하나 내줘"),
-                DialogueExchange(BotCharacters.CHUNGCHUNG, "음... 스마트폰 배터리로 쓰이는 건?", 2500),
-                DialogueExchange(BotCharacters.BBANBAN, "리튬이온!", 2000),
-                DialogueExchange(BotCharacters.CHUNGCHUNG, "오 정답! 똑똒하네~", 1500)
-            )
-        )
+    // 자연스러운 짧은 메시지들 (오타, 줄임말 포함)
+    private val casualMessages = listOf(
+        // 아주 짧은 메시지
+        "ㅎㅇ", "ㅎㅇㅎㅇ", "안뇽", "하잉",
+        "ㅋㅋ", "ㅋㅋㅋ", "ㅎㅎ", "ㅎㅎㅎ",
+        "오", "오오", "헐", "ㄷㄷ",
+        "ㄱㅊ", "ㅇㅇ", "ㄴㄴ", "ㅇㅋ",
+
+        // 짧은 감탄/반응
+        "와", "우와", "오호", "헉",
+        "대박", "실화?", "진짜?", "레알?",
+        "ㅋㅋㅋㅋ", "ㅋㅋㅋㅋㅋ",
+
+        // 일상적인 짧은 말
+        "심심", "심심해", "심심하다",
+        "배고파", "배고픔", "밥먹고싶다",
+        "졸려", "졸림", "자고싶다",
+        "ㅠㅠ", "ㅜㅜ", "ㅠ",
+
+        // 약간 긴 메시지 (자연스러운 문장)
+        "다들 뭐해", "뭐하냐", "뭐함",
+        "나만 심심해?", "나만 심심한거임?",
+        "여기 사람있음?", "아무도없나",
+        "조용하네", "왜케조용", "너무 조용해",
+        "오 사람있네", "반가워",
+        "충전중ㅋㅋ", "나도 충전중",
+        "100%유지중", "100퍼 유지하는중",
+        "아직 100%", "나 100프로임",
+        "언제까지 버티나", "오래버티자",
+        "화이팅", "파이팅", "ㅎㅇㅌ",
+
+        // 질문형
+        "다들 몇분째임?", "얼마나 버팀?",
+        "오늘 몇명 나감?", "나간사람 있음?",
+        "뭐하면서 기다려", "뭐하고있어",
+        "재밌는거 없나", "할거없다",
+
+        // 감정 표현
+        "행복", "행복하다", "좋다",
+        "ㅋㅋㅋ웃겨", "웃기네", "재밌네",
+        "아 지루해", "지루하다", "노잼",
+
+        // 랜덤 감탄사
+        "아", "아ㅋㅋ", "음", "흠",
+        "오케이", "ㅇㅋㅇㅋ", "굳", "굿",
+
+        // 이모티콘 섞인 것
+        "ㅎㅎ:)", "ㅋㅋ^^", "ㅠㅠ..",
+        "헐ㅋㅋ", "와ㅋㅋ", "오ㅋ"
     )
 
-    // 유저 반응 트리거 (자연스러운 반말)
-    private val userReactionTriggers = listOf(
-        UserReactionTrigger(
-            keywords = listOf("안녕", "하이", "ㅎㅇ", "hi", "hello"),
-            responses = listOf(
-                "안녕~",
-                "반가워",
-                "왔어?",
-                "하이하이"
-            )
+    // 유저 메시지에 대한 반응 (키워드 -> 반응들)
+    private val reactions = mapOf(
+        // 인사
+        listOf("안녕", "하이", "ㅎㅇ", "hi", "hello", "안뇽") to listOf(
+            "ㅎㅇ", "ㅎㅇㅎㅇ", "안녕", "반가워", "ㅎㅇㅋ", "왔어?", "오", "어 안녕"
         ),
-        UserReactionTrigger(
-            keywords = listOf("심심", "지루", "할게없"),
-            responses = listOf(
-                "나도ㅜ",
-                "같이 놀자",
-                "진짜 할 게 없다",
-                "퀴즈 풀래?"
-            )
+        // 심심/지루
+        listOf("심심", "지루", "노잼") to listOf(
+            "나도", "나두", "ㅇㅈ", "ㄹㅇ", "진짜", "마자", "ㅠㅠ", "그니까"
         ),
-        UserReactionTrigger(
-            keywords = listOf("ㅋㅋ", "ㅎㅎ", "ㅋㅋㅋ", "ㅎㅎㅎ", "웃겨", "재밌"),
-            responses = listOf(
-                "ㅋㅋㅋㅋㅋ",
-                "진짜 ㅋㅋ",
-                "웃기네",
-                "나도 웃겼어"
-            )
+        // 웃음
+        listOf("ㅋㅋ", "ㅎㅎ", "웃겨", "ㅋㅋㅋ") to listOf(
+            "ㅋㅋㅋ", "ㅋㅋㅋㅋㅋ", "ㅎㅎㅎ", "웃기네", "ㅋㅋㅋㅋ", "ㄹㅇㅋㅋ"
         ),
-        UserReactionTrigger(
-            keywords = listOf("배고파", "밥", "점심", "저녁", "아침", "뭐먹"),
-            responses = listOf(
-                "나도 배고파",
-                "뭐 먹을 거야?",
-                "맛있는 거 먹어",
-                "배달 시켜"
-            )
+        // 배고픔/음식
+        listOf("배고", "밥", "먹", "치킨", "피자") to listOf(
+            "나도", "맛있겠다", "ㅠㅠ배고파", "먹고싶다", "뭐먹어", "굿"
         ),
-        UserReactionTrigger(
-            keywords = listOf("졸려", "피곤", "자고싶", "잠"),
-            responses = listOf(
-                "충전하면서 쉬어",
-                "나도 졸려",
-                "잠깐 눈 붙여",
-                "커피 마셔"
-            )
+        // 졸림
+        listOf("졸려", "피곤", "잠") to listOf(
+            "나도졸려", "ㅠㅠ", "자", "자면안돼", "버텨", "화이팅"
         ),
-        UserReactionTrigger(
-            keywords = listOf("퇴장", "나가", "나갔", "탈출"),
-            responses = listOf(
-                "ㅋㅋㅋ 불쌍",
-                "충전기 꽂으라니까",
-                "다음엔 살아남아",
-                "안녕..."
-            )
+        // 퇴장 관련
+        listOf("나가", "퇴장", "나감", "탈출") to listOf(
+            "ㅋㅋㅋ", "불쌍", "ㅠㅠ", "ㅋㅋ앜", "헐", "바이"
         ),
-        UserReactionTrigger(
-            keywords = listOf("99%", "99퍼", "위험", "카운트다운"),
-            responses = listOf(
-                "어서 충전해!",
-                "빨리!!",
-                "긴장되네",
-                "살아남아!"
-            )
+        // 100%
+        listOf("100%", "100퍼", "완충", "풀충") to listOf(
+            "ㅊㅋ", "굳", "좋겠다", "나도", "ㅇㅇ", "ㅋㅋ"
         ),
-        UserReactionTrigger(
-            keywords = listOf("100%", "100퍼", "완충"),
-            responses = listOf(
-                "오 축하해",
-                "100% 좋다",
-                "완충 성공",
-                "이제 안심이네"
-            )
+        // 99% 위험
+        listOf("99%", "위험", "카운트") to listOf(
+            "헐", "ㄷㄷ", "충전해", "빨리", "긴장되네", "살아남아"
         ),
-        UserReactionTrigger(
-            keywords = listOf("뭐해", "뭐하세요", "뭐해요"),
-            responses = listOf(
-                "나? 충전 중",
-                "채팅하고 있지",
-                "너랑 얘기하고 있잖아",
-                "100% 유지 중"
-            )
-        )
-    )
-
-    // 재미있는 메시지 (캐릭터별, MZ 반말)
-    private val funMessages = mapOf(
-        BotCharacters.CHUNGCHUNG to listOf(
-            "조용하네... 다들 충전 중? ⚡",
-            "여기 아무도 없어? (메아리)",
-            "심심한데... 누가 말 좀 해줘",
-            "충전기 꽂고 뭐해?",
-            "오늘 배터리 몇 번 100% 찍었어?",
-            "배터리 잔량 확인했어? 혹시 모르니까!",
-            "100%의 여유 즐기는 중이구나",
-            "다들 뭐해~?",
-            "여기 있는 사람들 다 100%지? 대단",
-            "완충의 기쁨 나누자!"
+        // 동의/긍정
+        listOf("맞아", "ㅇㅇ", "인정", "ㄹㅇ") to listOf(
+            "ㅇㅈ", "ㄹㅇ", "ㅇㅇ", "그니까", "맞아", "진짜"
         ),
-        BotCharacters.BBANBAN to listOf(
-            "배터리 100% 유지하느라 다들 바쁜가봐",
-            "지금 이 고요함... 폭풍전야인가",
-            "완충 전우회의 밤은 길고...",
-            "이 정적... 다들 긴장하고 있는 거야?",
-            "충전 완료! 근데 할 게 없다...",
-            "배터리 닳기 전에 한마디 해봐~",
-            "오늘 생존 시간 몇 분이야?",
-            "다들 무슨 생각해?",
-            "지금 몇 퍼야? 아 당연히 100%지 ㅋㅋ",
-            "배터리 광고 아님 (진지)"
-        )
-    )
-
-    // 대화 주제 제안 (MZ 반말)
-    private val topicSuggestions = listOf(
-        "오늘 가장 기억에 남는 일 뭐야?",
-        "최근에 100% 찍고 가장 뿌듯했던 순간은?",
-        "지금 듣고 있는 음악 있어?",
-        "오늘 저녁 뭐 먹었어?",
-        "주말에 뭐 할 거야?",
-        "요즘 재밌게 보는 드라마/영화 있어?",
-        "배터리 오래 가는 꿀팁 있으면 공유해줘!",
-        "지금 기분을 이모지 하나로 표현한다면?",
-        "오늘 하루 점수 매기면 몇 점?",
-        "가장 오래 버틴 기록이 어떻게 돼?",
-        "핸드폰 바꾼 지 얼마나 됐어?",
-        "충전하면서 주로 뭐 해?",
-        "지금 있는 곳 날씨 어때?",
-        "추천하고 싶은 앱 있어?",
-        "요즘 빠진 취미 있어?",
-        "아침형 인간? 저녁형 인간?",
-        "커피파? 차파?",
-        "최근에 웃겼던 일 있어?"
-    )
-
-    // OX 퀴즈
-    private val oxQuizzes = listOf(
-        BotContent.Quiz(
-            id = "ox_1",
-            question = "스마트폰 배터리는 0%까지 방전시키고 충전하는 게 좋다?",
-            options = listOf("O", "X"),
-            correctIndex = 1,
-            explanation = "리튬이온 배터리는 20~80% 사이로 유지하는 게 수명에 좋아요!"
+        // 질문에 대한 반응
+        listOf("뭐해", "뭐함", "모함") to listOf(
+            "충전중", "채팅", "그냥", "너는", "뭐하긴 충전중", "ㅋㅋ뭐하긴"
         ),
-        BotContent.Quiz(
-            id = "ox_2",
-            question = "밤새 충전해도 배터리에 문제없다?",
-            options = listOf("O", "X"),
-            correctIndex = 0,
-            explanation = "최신 스마트폰은 과충전 방지 기능이 있어서 괜찮아요!"
-        ),
-        BotContent.Quiz(
-            id = "ox_3",
-            question = "비행기 모드로 충전하면 더 빨리 충전된다?",
-            options = listOf("O", "X"),
-            correctIndex = 0,
-            explanation = "맞아요! 통신 기능을 끄면 충전 속도가 빨라져요."
-        ),
-        BotContent.Quiz(
-            id = "ox_4",
-            question = "추운 곳에서는 배터리가 더 빨리 닳는다?",
-            options = listOf("O", "X"),
-            correctIndex = 0,
-            explanation = "리튬이온 배터리는 저온에서 성능이 떨어져요."
-        ),
-        BotContent.Quiz(
-            id = "ox_5",
-            question = "화면 밝기를 낮추면 배터리가 오래 간다?",
-            options = listOf("O", "X"),
-            correctIndex = 0,
-            explanation = "화면이 배터리 소모의 가장 큰 원인 중 하나예요!"
-        ),
-        BotContent.Quiz(
-            id = "ox_6",
-            question = "앱을 완전히 종료하면 배터리가 절약된다?",
-            options = listOf("O", "X"),
-            correctIndex = 1,
-            explanation = "오히려 앱을 다시 실행할 때 더 많은 배터리가 소모돼요."
-        ),
-        BotContent.Quiz(
-            id = "ox_7",
-            question = "Wi-Fi가 데이터보다 배터리를 적게 쓴다?",
-            options = listOf("O", "X"),
-            correctIndex = 0,
-            explanation = "일반적으로 Wi-Fi가 모바일 데이터보다 효율적이에요."
-        ),
-        BotContent.Quiz(
-            id = "ox_8",
-            question = "다크 모드를 쓰면 배터리가 절약된다?",
-            options = listOf("O", "X"),
-            correctIndex = 0,
-            explanation = "OLED 화면에서는 검은색 픽셀이 꺼지므로 절약돼요!"
-        )
-    )
-
-    // 사지선다 퀴즈
-    private val multipleChoiceQuizzes = listOf(
-        BotContent.Quiz(
-            id = "mc_1",
-            question = "세계 최초의 상용 휴대전화는?",
-            options = listOf("아이폰", "모토로라 다이나택", "노키아 1011", "삼성 SH-100"),
-            correctIndex = 1,
-            explanation = "1983년 모토로라 다이나택이 최초의 상용 휴대전화예요!"
-        ),
-        BotContent.Quiz(
-            id = "mc_2",
-            question = "아이폰이 처음 출시된 연도는?",
-            options = listOf("2005년", "2006년", "2007년", "2008년"),
-            correctIndex = 2,
-            explanation = "스티브 잡스가 2007년 1월에 아이폰을 발표했어요."
-        ),
-        BotContent.Quiz(
-            id = "mc_3",
-            question = "스마트폰 배터리로 주로 사용되는 것은?",
-            options = listOf("니켈카드뮴", "리튬이온", "알카라인", "납축전지"),
-            correctIndex = 1,
-            explanation = "가볍고 에너지 밀도가 높은 리튬이온 배터리를 사용해요."
-        ),
-        BotContent.Quiz(
-            id = "mc_4",
-            question = "안드로이드의 마스코트 이름은?",
-            options = listOf("앤디", "버기", "로이드", "공식 이름 없음"),
-            correctIndex = 3,
-            explanation = "초록색 로봇은 공식 이름이 없어요! 그냥 '안드로이드 로봇'이에요."
-        ),
-        BotContent.Quiz(
-            id = "mc_5",
-            question = "'mAh'는 무엇의 단위일까요?",
-            options = listOf("전압", "전류", "배터리 용량", "충전 속도"),
-            correctIndex = 2,
-            explanation = "밀리암페어시(mAh)는 배터리가 저장할 수 있는 전하량이에요."
-        ),
-        BotContent.Quiz(
-            id = "mc_6",
-            question = "USB-C 규격이 처음 발표된 연도는?",
-            options = listOf("2012년", "2014년", "2016년", "2018년"),
-            correctIndex = 1,
-            explanation = "USB-C는 2014년에 발표되었어요."
-        ),
-        BotContent.Quiz(
-            id = "mc_7",
-            question = "5G에서 'G'는 무슨 뜻일까요?",
-            options = listOf("기가", "제너레이션", "글로벌", "기가바이트"),
-            correctIndex = 1,
-            explanation = "Generation(세대)의 약자예요. 5세대 이동통신이죠!"
-        ),
-        BotContent.Quiz(
-            id = "mc_8",
-            question = "급속 충전 기술 중 가장 오래된 것은?",
-            options = listOf("퀄컴 퀵차지", "USB PD", "삼성 AFC", "원플러스 대시차지"),
-            correctIndex = 0,
-            explanation = "퀄컴 퀵차지가 2013년에 가장 먼저 나왔어요."
-        )
-    )
-
-    // 초성 퀴즈
-    private val initialQuizzes = listOf(
-        BotContent.Quiz(
-            id = "initial_1",
-            question = "ㅂㅌㄹ (힌트: 이거 없으면 폰 못 써요)",
-            options = listOf("배터리", "버터링", "바트라", "보틀러"),
-            correctIndex = 0,
-            explanation = "정답은 배터리!"
-        ),
-        BotContent.Quiz(
-            id = "initial_2",
-            question = "ㅊㅈㄱ (힌트: 배터리 채우는 물건)",
-            options = listOf("충전기", "충전공", "차전기", "철정기"),
-            correctIndex = 0,
-            explanation = "정답은 충전기!"
-        ),
-        BotContent.Quiz(
-            id = "initial_3",
-            question = "ㅅㅁㅌㅍ (힌트: 손에 들고 다니는 거)",
-            options = listOf("스마트폰", "서맛탕펀", "사무타폰", "스맛타팡"),
-            correctIndex = 0,
-            explanation = "정답은 스마트폰!"
-        ),
-        BotContent.Quiz(
-            id = "initial_4",
-            question = "ㅇㅇㅋ (힌트: 애플 제품)",
-            options = listOf("아이폰", "아이콘", "에어컨", "아이쿡"),
-            correctIndex = 0,
-            explanation = "정답은 아이폰!"
-        ),
-        BotContent.Quiz(
-            id = "initial_5",
-            question = "ㄱㅅㅊㅈ (힌트: 빨리빨리 충전)",
-            options = listOf("급속충전", "고속철전", "금속충전", "긍속충정"),
-            correctIndex = 0,
-            explanation = "정답은 급속충전!"
+        // 감탄
+        listOf("대박", "헐", "와", "오") to listOf(
+            "ㅇㅈ", "ㄹㅇ", "그니까", "마자", "헐ㅋㅋ", "와ㅋㅋ"
         )
     )
 
     /**
-     * 랜덤 봇 콘텐츠 반환 (침묵 시)
+     * 랜덤 봇 메시지 반환 (침묵 시)
      */
-    fun getRandomContent(): BotContent {
-        return when (Random.nextInt(10)) {
-            in 0..2 -> getRandomFunMessage()      // 30% 확률
-            in 3..4 -> getRandomTopicSuggestion() // 20% 확률
-            in 5..7 -> getRandomDialogue()        // 30% 확률 - 2인 대화
-            else -> getRandomQuiz()               // 20% 확률
-        }
-    }
-
-    /**
-     * 2인 대화 시나리오 반환
-     */
-    fun getRandomDialogue(): BotContent.Dialogue {
-        return BotContent.Dialogue(dialogueScenarios.random())
-    }
-
-    fun getRandomFunMessage(): BotContent.FunMessage {
+    fun getRandomMessage(): BotContent.SimpleMessage {
         val character = BotCharacters.random()
-        val messages = funMessages[character] ?: funMessages.values.first()
-        return BotContent.FunMessage(messages.random(), character)
-    }
-
-    fun getRandomTopicSuggestion(): BotContent.TopicSuggestion {
-        return BotContent.TopicSuggestion(topicSuggestions.random(), BotCharacters.random())
-    }
-
-    fun getRandomQuiz(): BotContent.Quiz {
-        val allQuizzes = oxQuizzes + multipleChoiceQuizzes + initialQuizzes
-        return allQuizzes.random().copy(character = BotCharacters.CHUNGCHUNG)
+        val message = casualMessages.random()
+        return BotContent.SimpleMessage(message, character)
     }
 
     /**
-     * 유저 메시지에 대한 반응 확인
-     * @return 반응할 메시지가 있으면 Pair(캐릭터, 메시지), 없으면 null
+     * 유저 메시지에 대한 반응
+     * @return 반응이 있으면 BotContent.ReplyMessage, 없으면 null
      */
-    fun getReactionToMessage(userMessage: String): Pair<BotCharacter, String>? {
-        // 30% 확률로만 반응 (너무 자주 반응하지 않도록)
-        if (Random.nextFloat() > 0.3f) return null
+    fun getReactionToMessage(userMessage: String): BotContent.ReplyMessage? {
+        // 50% 확률로 반응 (기존 30%에서 증가)
+        if (Random.nextFloat() > 0.5f) return null
+
+        // 메시지가 너무 짧으면 반응하지 않음 (봇끼리 무한루프 방지)
+        if (userMessage.length < 2) return null
 
         val lowerMessage = userMessage.lowercase()
 
-        for (trigger in userReactionTriggers) {
-            if (trigger.keywords.any { lowerMessage.contains(it) }) {
-                val responder = trigger.responder ?: BotCharacters.random()
-                return Pair(responder, trigger.responses.random())
+        for ((keywords, responses) in reactions) {
+            if (keywords.any { lowerMessage.contains(it) }) {
+                val character = BotCharacters.random()
+                val response = responses.random()
+                return BotContent.ReplyMessage(response, character)
             }
+        }
+
+        // 키워드 매칭이 없어도 20% 확률로 일반적인 반응
+        if (Random.nextFloat() < 0.2f) {
+            val genericResponses = listOf("ㅇㅇ", "ㅋㅋ", "오", "ㅎㅎ", "굳", "ㄱㅊ")
+            val character = BotCharacters.random()
+            return BotContent.ReplyMessage(genericResponses.random(), character)
         }
 
         return null

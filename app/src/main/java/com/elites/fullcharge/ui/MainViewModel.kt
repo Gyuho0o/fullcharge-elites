@@ -26,10 +26,14 @@ data class MainUiState(
     val nickname: String = "",
     val messages: List<ChatMessage> = emptyList(),
     val onlineUsers: List<EliteUser> = emptyList(),
+    val allTimeRecords: List<AllTimeRecord> = emptyList(),
     val onlineUserCount: Int = 0,
     val sessionStartTime: Long = 0L,
     val sessionDuration: Long = 0L,
     val isInChat: Boolean = false,
+    // 관리자 모드
+    val isAdminMode: Boolean = false,
+    val showAdminLoginDialog: Boolean = false,
     // 위험 카운트다운 관련
     val isInDanger: Boolean = false,
     val dangerCountdown: Int = 0,  // 남은 초
@@ -54,13 +58,13 @@ data class MainUiState(
     // 시간 기반 이벤트
     val personalHourMilestone: Int? = null,  // 달성한 시간 (1, 2, 3...)
     val isHourlyChime: Boolean = false,
-    val isMidnightSpecial: Boolean = false,
-    // 퀴즈 시스템
-    val activeQuiz: BotContent.Quiz? = null
+    val isMidnightSpecial: Boolean = false
 ) {
     companion object {
         const val DANGER_COUNTDOWN_SECONDS = 10  // 10초 카운트다운
-        const val BOT_SILENCE_THRESHOLD_MS = 3 * 60 * 1000L  // 3분 무대화 시 봇 발동
+        // 봇 발동 시간 범위 (2~4분 랜덤)
+        const val BOT_SILENCE_MIN_MS = 2 * 60 * 1000L
+        const val BOT_SILENCE_MAX_MS = 4 * 60 * 1000L
     }
 }
 
@@ -86,18 +90,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // 봇 콘텐츠 관련
     private var lastMessageTime = 0L
     private var lastPersonalHour = -1L
+    private var currentBotThreshold = getRandomBotThreshold()  // 랜덤 타이밍
+
+    private fun getRandomBotThreshold(): Long {
+        return (MainUiState.BOT_SILENCE_MIN_MS..MainUiState.BOT_SILENCE_MAX_MS).random()
+    }
 
     // 도배 방지용
     private var lastSentMessage: String = ""
     private var consecutiveCount: Int = 0
     private var lastSentTime: Long = 0L  // 쿨다운용
     private val recentMessageTimes = mutableListOf<Long>()  // 시간당 제한용
-
-    companion object {
-        private const val COOLDOWN_MS = 1000L  // 1초 쿨다운
-        private const val RATE_LIMIT_WINDOW_MS = 10000L  // 10초 윈도우
-        private const val RATE_LIMIT_MAX_MESSAGES = 5  // 10초에 최대 5개
-    }
 
     init {
         // 온보딩은 매번 앱 시작 시 표시 (onboardingCompleted = false가 기본값)
@@ -123,10 +126,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _uiState.update { it.copy(userId = userId, nickname = nickname) }
         }
 
-        // 닉네임 변경 관찰
+        // 닉네임 변경 관찰 (관리자 모드가 아닐 때만)
         viewModelScope.launch {
             preferences.nickname.collect { nickname ->
-                if (nickname.isNotBlank()) {
+                if (nickname.isNotBlank() && !_uiState.value.isAdminMode) {
                     _uiState.update { it.copy(nickname = nickname) }
                 }
             }
@@ -136,6 +139,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             chatRepository.getOnlineUserCount().collect { count ->
                 _uiState.update { it.copy(onlineUserCount = count) }
+            }
+        }
+
+        // 역대 랭킹 관찰
+        viewModelScope.launch {
+            chatRepository.getAllTimeRecords().collect { records ->
+                _uiState.update { it.copy(allTimeRecords = records) }
             }
         }
 
@@ -513,16 +523,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         recentMessageTimes.add(currentTime)
 
         viewModelScope.launch {
-            // 퀴즈 정답 체크 (퀴즈가 활성화된 경우)
-            if (_uiState.value.activeQuiz != null) {
-                val wasQuizAnswer = checkQuizAnswer(text)
-                if (wasQuizAnswer) {
-                    // 봇 타이머 리셋
-                    resetBotTimer()
-                    return@launch  // 퀴즈 답변은 일반 메시지로 전송하지 않음
-                }
-            }
-
             val message = ChatMessage(
                 id = UUID.randomUUID().toString(),
                 userId = state.userId,
@@ -574,7 +574,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun createPoll(question: String, options: List<String>) {
+    fun createPoll(question: String, options: List<String>, durationMinutes: Int = 5) {
         if (question.isBlank() || options.size < 2) return
 
         val state = _uiState.value
@@ -586,7 +586,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 nickname = state.nickname,
                 rank = rank.name,
                 question = question,
-                options = options
+                options = options,
+                durationMinutes = durationMinutes
             )
         }
     }
@@ -632,6 +633,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             val state = _uiState.value
+
+            // 역대 기록 업데이트
+            if (state.sessionDuration > 0) {
+                chatRepository.updateAllTimeRecord(
+                    userId = state.userId,
+                    nickname = state.nickname,
+                    durationMillis = state.sessionDuration
+                )
+            }
 
             // 세션 복구용으로 저장 (하사 이상인 경우에만 의미있음)
             if (state.sessionDuration >= ElitePreferences.MIN_RESTORE_DURATION_MS) {
@@ -683,14 +693,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun leaveChat() {
         viewModelScope.launch {
             val state = _uiState.value
+            val wasAdminMode = state.isAdminMode
 
-            // 세션 복구용으로 저장 (하사 이상인 경우에만 의미있음)
-            if (state.sessionDuration >= ElitePreferences.MIN_RESTORE_DURATION_MS) {
+            // 관리자가 아닌 경우만 역대 기록 업데이트
+            if (!wasAdminMode && state.sessionDuration > 0) {
+                chatRepository.updateAllTimeRecord(
+                    userId = state.userId,
+                    nickname = state.nickname,
+                    durationMillis = state.sessionDuration
+                )
+            }
+
+            // 관리자가 아닌 경우만 세션 복구용으로 저장
+            if (!wasAdminMode && state.sessionDuration >= ElitePreferences.MIN_RESTORE_DURATION_MS) {
                 preferences.saveSessionForRestore(state.sessionDuration)
             }
 
-            // 퇴장 알림 시스템 메시지 전송
-            chatRepository.sendSystemMessage("${state.nickname}님이 퇴장했습니다")
+            // 관리자가 아닌 경우만 퇴장 알림 시스템 메시지 전송
+            if (!wasAdminMode) {
+                chatRepository.sendSystemMessage("${state.nickname}님이 퇴장했습니다")
+            }
 
             // Firebase에서 퇴장 처리
             chatRepository.leaveChat(state.userId)
@@ -716,7 +738,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     sessionStartTime = 0L,
                     sessionDuration = 0L,
                     comboState = ComboState(),  // 콤보 리셋
-                    activeQuiz = null  // 퀴즈 리셋
+                    isAdminMode = false  // 관리자 모드 비활성화
                 )
             }
         }
@@ -728,6 +750,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun changeNickname(newNickname: String) {
+        // 관리자 모드에서는 닉네임 변경 불가
+        if (_uiState.value.isAdminMode) {
+            _uiState.update { it.copy(filterErrorMessage = "관리자 모드에서는 닉네임을 변경할 수 없습니다") }
+            return
+        }
+
         // 닉네임 필터링
         val filterResult = ContentFilter.filterNickname(newNickname)
         if (!filterResult.isAllowed) {
@@ -936,15 +964,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun startBotContentTimer() {
         botContentJob?.cancel()
         lastMessageTime = System.currentTimeMillis()
+        currentBotThreshold = getRandomBotThreshold()
 
         botContentJob = viewModelScope.launch {
             while (_uiState.value.isInChat) {
-                delay(15_000)  // 15초마다 체크
+                // 10~20초 랜덤 체크 간격 (더 자연스럽게)
+                delay((10_000L..20_000L).random())
 
                 val timeSinceLastMessage = System.currentTimeMillis() - lastMessageTime
-                if (timeSinceLastMessage >= MainUiState.BOT_SILENCE_THRESHOLD_MS) {
+                if (timeSinceLastMessage >= currentBotThreshold) {
                     sendBotContent()
-                    lastMessageTime = System.currentTimeMillis()  // 봇 메시지도 시간 리셋
+                    lastMessageTime = System.currentTimeMillis()
+                    currentBotThreshold = getRandomBotThreshold()  // 다음 발동 시간도 랜덤
                 }
             }
         }
@@ -958,38 +989,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun sendBotContent() {
-        val content = BotContentRepository.getRandomContent()
-
-        when (content) {
-            is BotContent.FunMessage -> {
-                chatRepository.sendBotMessageWithCharacter(content.character, content.message)
-            }
-            is BotContent.TopicSuggestion -> {
-                chatRepository.sendBotMessageWithCharacter(content.character, content.topic)
-            }
-            is BotContent.Dialogue -> {
-                // 2인 대화 시나리오 실행
-                sendDialogueScenario(content.scenario)
-            }
-            is BotContent.Quiz -> {
-                // 퀴즈를 투표로 전송
-                chatRepository.sendBotQuizAsPoll(
-                    question = "🧠 ${content.question}",
-                    options = content.options
-                )
-            }
-        }
-    }
-
-    /**
-     * 2인 대화 시나리오 실행
-     */
-    private suspend fun sendDialogueScenario(scenario: DialogueScenario) {
-        for (exchange in scenario.exchanges) {
-            // 각 대화 간 딜레이
-            delay(exchange.delayMs)
-            chatRepository.sendBotMessageWithCharacter(exchange.speaker, exchange.message)
-        }
+        val content = BotContentRepository.getRandomMessage()
+        chatRepository.sendBotMessageWithCharacter(content.character, content.message)
     }
 
     /**
@@ -998,47 +999,119 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private suspend fun checkBotReaction(userMessage: String) {
         val reaction = BotContentRepository.getReactionToMessage(userMessage)
         if (reaction != null) {
-            // 1~3초 랜덤 딜레이 후 반응
-            delay((1000L..3000L).random())
-            chatRepository.sendBotMessageWithCharacter(reaction.first, reaction.second)
+            // 1~5초 랜덤 딜레이 후 반응 (더 자연스럽게)
+            delay((1000L..5000L).random())
+            chatRepository.sendBotMessageWithCharacter(reaction.character, reaction.message)
+        }
+    }
+
+    // ========== 관리자 모드 ==========
+
+    companion object {
+        private const val COOLDOWN_MS = 1000L
+        private const val RATE_LIMIT_WINDOW_MS = 10000L
+        private const val RATE_LIMIT_MAX_MESSAGES = 5
+        // 관리자 비밀번호 (실제 운영에서는 더 안전한 방법 권장)
+        private const val ADMIN_PASSWORD = "elite2024!"
+        private const val ADMIN_NICKNAME = "전우회장"
+    }
+
+    fun showAdminLoginDialog() {
+        _uiState.update { it.copy(showAdminLoginDialog = true) }
+    }
+
+    fun dismissAdminLoginDialog() {
+        _uiState.update { it.copy(showAdminLoginDialog = false) }
+    }
+
+    fun tryAdminLogin(password: String): Boolean {
+        val isValid = password == ADMIN_PASSWORD
+        if (isValid) {
+            _uiState.update {
+                it.copy(
+                    isAdminMode = true,
+                    showAdminLoginDialog = false
+                )
+            }
+        }
+        return isValid
+    }
+
+    fun logoutAdmin() {
+        _uiState.update { it.copy(isAdminMode = false) }
+    }
+
+    /**
+     * 관리자: 배터리 상관없이 입장
+     */
+    fun enterChatAsAdmin() {
+        if (!_uiState.value.isAdminMode) return
+
+        val state = _uiState.value
+
+        viewModelScope.launch {
+            // 관리자는 대장 계급으로 시작 (10080분 = 7일)
+            val generalDuration = EliteRank.GENERAL.minMinutes * 60 * 1000L
+            val adjustedStartTime = System.currentTimeMillis() - generalDuration
+
+            chatRepository.setJoinedTime(System.currentTimeMillis())
+            chatRepository.joinChat(state.userId, ADMIN_NICKNAME)
+
+            preferences.startSession()
+
+            _uiState.update {
+                it.copy(
+                    currentScreen = AppScreen.CHAT,
+                    isInChat = true,
+                    sessionStartTime = adjustedStartTime,
+                    sessionDuration = generalDuration,
+                    nickname = ADMIN_NICKNAME
+                )
+            }
+
+            startMessageObservation()
+            startOnlineUsersObservation()
+            startSessionTimer()
+            startActivityUpdate()
+            startTimeEventMonitoring()
+            startBotContentTimer()
+            // 관리자는 배터리 모니터링 안 함 (강퇴 방지)
         }
     }
 
     /**
-     * 퀴즈 정답 확인 (메시지 전송 시 호출)
+     * 관리자: 사용자 강퇴
      */
-    private suspend fun checkQuizAnswer(message: String): Boolean {
-        val quiz = _uiState.value.activeQuiz ?: return false
+    fun kickUser(userId: String, nickname: String) {
+        if (!_uiState.value.isAdminMode) return
 
-        // 숫자 입력 확인 (1, 2, 3, 4 또는 "1번", "2번" 등)
-        val answerNumber = message.trim()
-            .replace("번", "")
-            .replace(".", "")
-            .toIntOrNull()
-
-        if (answerNumber != null && answerNumber in 1..quiz.options.size) {
-            val isCorrect = (answerNumber - 1) == quiz.correctIndex
-
-            // 퀴즈 종료
-            _uiState.update { it.copy(activeQuiz = null) }
-
-            // 결과 메시지 전송
-            if (isCorrect) {
-                val nickname = _uiState.value.nickname
-                chatRepository.sendBotMessage(
-                    "🎉 정답! ${nickname}님이 맞췄어요!\n\n💡 ${quiz.explanation}"
-                )
-            } else {
-                val correctAnswer = quiz.options[quiz.correctIndex]
-                chatRepository.sendBotMessage(
-                    "❌ 아쉬워요! 정답은 '${correctAnswer}'이에요.\n\n💡 ${quiz.explanation}"
-                )
-            }
-
-            return true  // 퀴즈 답변이었음
+        viewModelScope.launch {
+            chatRepository.kickUser(userId)
+            chatRepository.sendSystemMessage("${nickname}님이 관리자에 의해 퇴장되었습니다")
         }
+    }
 
-        return false  // 일반 메시지
+    /**
+     * 관리자: 사용자 계급 변경
+     */
+    fun changeUserRank(userId: String, nickname: String, newRank: EliteRank) {
+        if (!_uiState.value.isAdminMode) return
+
+        viewModelScope.launch {
+            chatRepository.changeUserRank(userId, newRank)
+            chatRepository.sendSystemMessage("${nickname}님이 ${newRank.koreanName}(으)로 임명되었습니다")
+        }
+    }
+
+    /**
+     * 관리자: 공지 메시지 전송
+     */
+    fun sendAdminNotice(message: String) {
+        if (!_uiState.value.isAdminMode) return
+
+        viewModelScope.launch {
+            chatRepository.sendSystemMessage("[공지] $message")
+        }
     }
 
     override fun onCleared() {

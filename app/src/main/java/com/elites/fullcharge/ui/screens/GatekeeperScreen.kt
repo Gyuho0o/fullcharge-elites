@@ -4,6 +4,8 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.navigationBars
@@ -12,6 +14,8 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -20,6 +24,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -41,14 +46,34 @@ fun GatekeeperScreen(
     restorableSessionDuration: Long? = null,
     onRestoreWithAd: (Long) -> Unit = {},
     onDismissRestore: () -> Unit = {},
+    // 관리자 모드
+    isAdminMode: Boolean = false,
+    showAdminLoginDialog: Boolean = false,
+    onAdminTapDetected: () -> Unit = {},
+    onAdminLogin: (String) -> Boolean = { false },
+    onDismissAdminDialog: () -> Unit = {},
+    onEnterAsAdmin: () -> Unit = {},
+    onAdminLogout: () -> Unit = {},  // 관리자 모드 비활성화
     modifier: Modifier = Modifier
 ) {
     val isElite = batteryState.isElite  // 100% + 충전 중
     val isCharging = batteryState.isCharging
     val batteryLevel = batteryState.level
 
+    // 비밀 탭 카운트 (타이틀 5번 탭하면 관리자 로그인)
+    var secretTapCount by remember { mutableIntStateOf(0) }
+    var lastTapTime by remember { mutableLongStateOf(0L) }
+
     // 계급 복구 다이얼로그 표시 여부
     var showRestoreDialog by remember { mutableStateOf(false) }
+
+    // 관리자 로그인 다이얼로그
+    if (showAdminLoginDialog) {
+        AdminLoginDialog(
+            onLogin = onAdminLogin,
+            onDismiss = onDismissAdminDialog
+        )
+    }
 
     // 복구 가능한 세션이 있고, 입장 가능할 때 다이얼로그 자동 표시
     LaunchedEffect(restorableSessionDuration, isElite) {
@@ -103,23 +128,48 @@ fun GatekeeperScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // 타이틀
+            // 타이틀 (5번 탭하면 관리자 로그인/로그아웃 토글)
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(top = 24.dp)
+                modifier = Modifier
+                    .padding(top = 24.dp)
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) {
+                        val currentTime = System.currentTimeMillis()
+                        // 2초 내 연속 탭만 카운트
+                        if (currentTime - lastTapTime < 2000) {
+                            secretTapCount++
+                            if (secretTapCount >= 5) {
+                                secretTapCount = 0
+                                if (isAdminMode) {
+                                    // 이미 관리자 모드면 로그아웃
+                                    onAdminLogout()
+                                } else {
+                                    // 관리자 모드가 아니면 로그인 시도
+                                    onAdminTapDetected()
+                                }
+                            }
+                        } else {
+                            secretTapCount = 1
+                        }
+                        lastTapTime = currentTime
+                    }
             ) {
                 Text(
-                    text = "완충 전우회",
+                    text = if (isAdminMode) "🔐 완충 전우회" else "완충 전우회",
                     fontSize = 28.sp,
                     fontWeight = FontWeight.Bold,
-                    color = if (isElite) TossBlue else TextPrimary
+                    color = if (isAdminMode) StatusRed else if (isElite) TossBlue else TextPrimary
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = if (isElite) "100% 완충된 엘리트만 입장 가능"
+                    text = if (isAdminMode) "관리자 모드 (5탭으로 해제)"
+                           else if (isElite) "100% 완충된 자만이 입장 가능"
                            else "100%가 되면 입장할 수 있어요",
                     fontSize = 14.sp,
-                    color = TextSecondary
+                    color = if (isAdminMode) StatusRed else TextSecondary
                 )
             }
 
@@ -134,7 +184,13 @@ fun GatekeeperScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.padding(bottom = 48.dp)
             ) {
-                if (isElite) {
+                if (isAdminMode) {
+                    // 관리자 모드: 배터리 상관없이 입장 가능 (최우선)
+                    AdminEntryContent(
+                        onlineUserCount = onlineUserCount,
+                        onEnterAsAdmin = onEnterAsAdmin
+                    )
+                } else if (isElite) {
                     EliteWelcomeContent(
                         onlineUserCount = onlineUserCount,
                         onEnterPortal = onEnterPortal
@@ -427,6 +483,154 @@ private fun UnworthyContent(
             )
         }
     }
+}
+
+/**
+ * 관리자 입장 콘텐츠
+ */
+@Composable
+private fun AdminEntryContent(
+    onlineUserCount: Int,
+    onEnterAsAdmin: () -> Unit
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = "🔐 관리자 모드",
+            fontSize = 20.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = StatusRed,
+            textAlign = TextAlign.Center
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+            text = "현재 ${onlineUserCount}명의 전우회원이 대화 중",
+            fontSize = 14.sp,
+            color = TextSecondary
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+            text = "배터리 상태와 관계없이 입장 가능\n강퇴/계급 변경 권한 보유",
+            fontSize = 12.sp,
+            color = TextTertiary,
+            textAlign = TextAlign.Center,
+            lineHeight = 16.sp
+        )
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        Button(
+            onClick = onEnterAsAdmin,
+            modifier = Modifier
+                .height(52.dp)
+                .fillMaxWidth(0.8f),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = StatusRed
+            ),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Text(
+                text = "관리자로 입장",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.White
+            )
+        }
+    }
+}
+
+/**
+ * 관리자 로그인 다이얼로그
+ */
+@Composable
+private fun AdminLoginDialog(
+    onLogin: (String) -> Boolean,
+    onDismiss: () -> Unit
+) {
+    var password by remember { mutableStateOf("") }
+    var showError by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = BackgroundWhite,
+        title = {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "🔐",
+                    fontSize = 48.sp
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "관리자 로그인",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 20.sp,
+                    color = TextPrimary
+                )
+            }
+        },
+        text = {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = {
+                        password = it
+                        showError = false
+                    },
+                    label = { Text("비밀번호") },
+                    singleLine = true,
+                    isError = showError,
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = TossBlue,
+                        focusedLabelColor = TossBlue,
+                        errorBorderColor = StatusRed
+                    )
+                )
+                if (showError) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "비밀번호가 틀렸습니다",
+                        color = StatusRed,
+                        fontSize = 12.sp
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (onLogin(password)) {
+                        onDismiss()
+                    } else {
+                        showError = true
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = TossBlue
+                ),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("로그인")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("취소", color = TextSecondary)
+            }
+        }
+    )
 }
 
 /**

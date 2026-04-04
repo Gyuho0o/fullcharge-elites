@@ -18,6 +18,7 @@ class ChatRepository {
     private val messagesRef: DatabaseReference = database.getReference("messages")
     private val usersRef: DatabaseReference = database.getReference("online_users")
     private val reportsRef: DatabaseReference = database.getReference("reports")
+    private val allTimeRecordsRef: DatabaseReference = database.getReference("all_time_records")
 
     // 최근 50개 메시지만 유지
     private val messageLimit = 50
@@ -71,6 +72,7 @@ class ChatRepository {
                                 .mapNotNull { it.getValue(String::class.java) }
                             pollVotes[key] = userIds
                         }
+                        val pollEndTime = child.child("pollEndTime").getValue(Long::class.java) ?: 0L
 
                         // mentions
                         val mentions = child.child("mentions").children
@@ -97,6 +99,7 @@ class ChatRepository {
                             pollQuestion = pollQuestion,
                             pollOptions = pollOptions,
                             pollVotes = pollVotes,
+                            pollEndTime = pollEndTime,
                             mentions = mentions,
                             warning = warning
                         )
@@ -173,19 +176,11 @@ class ChatRepository {
     }
 
     /**
-     * 봇 메시지 전송 (일반 유저처럼 보이도록)
+     * 봇 메시지 전송 (랜덤 캐릭터 사용)
      */
     suspend fun sendBotMessage(text: String) {
-        val key = messagesRef.push().key ?: UUID.randomUUID().toString()
-        val message = ChatMessage(
-            id = key,
-            userId = ChatMessage.BOT_USER_ID,
-            nickname = ChatMessage.BOT_NICKNAME,
-            message = text,
-            timestamp = System.currentTimeMillis(),
-            rank = EliteRank.SERGEANT.name  // 병장 계급으로 표시
-        )
-        messagesRef.child(key).setValue(message.toMap()).await()
+        val character = BotCharacters.random()
+        sendBotMessageWithCharacter(character, text)
     }
 
     /**
@@ -205,21 +200,24 @@ class ChatRepository {
     }
 
     /**
-     * 봇 퀴즈를 투표로 전송
+     * 봇 퀴즈를 투표로 전송 (랜덤 캐릭터 사용, 3분 제한)
      */
     suspend fun sendBotQuizAsPoll(question: String, options: List<String>) {
+        val character = BotCharacters.random()
         val key = messagesRef.push().key ?: UUID.randomUUID().toString()
+        val currentTime = System.currentTimeMillis()
         val message = ChatMessage(
             id = key,
-            userId = ChatMessage.BOT_USER_ID,
-            nickname = ChatMessage.BOT_NICKNAME,
+            userId = character.id,
+            nickname = character.nickname,
             message = question,
-            timestamp = System.currentTimeMillis(),
-            rank = EliteRank.SERGEANT.name,
+            timestamp = currentTime,
+            rank = character.rank.name,
             isPoll = true,
             pollQuestion = question,
             pollOptions = options,
-            pollVotes = options.indices.associate { it.toString() to emptyList() }
+            pollVotes = options.indices.associate { it.toString() to emptyList() },
+            pollEndTime = currentTime + (3 * 60 * 1000L)  // 3분 후 종료
         )
         messagesRef.child(key).setValue(message.toMap()).await()
     }
@@ -427,27 +425,119 @@ class ChatRepository {
 
     /**
      * 투표 메시지 전송
+     * @param durationMinutes 투표 지속 시간 (분). 0이면 무제한
      */
     suspend fun sendPollMessage(
         userId: String,
         nickname: String,
         rank: String,
         question: String,
-        options: List<String>
+        options: List<String>,
+        durationMinutes: Int = 5
     ) {
         val key = messagesRef.push().key ?: UUID.randomUUID().toString()
+        val currentTime = System.currentTimeMillis()
+        val endTime = if (durationMinutes > 0) {
+            currentTime + (durationMinutes * 60 * 1000L)
+        } else 0L
+
         val message = ChatMessage(
             id = key,
             userId = userId,
             nickname = nickname,
             message = question,
-            timestamp = System.currentTimeMillis(),
+            timestamp = currentTime,
             rank = rank,
             isPoll = true,
             pollQuestion = question,
             pollOptions = options,
-            pollVotes = options.indices.associate { it.toString() to emptyList() }
+            pollVotes = options.indices.associate { it.toString() to emptyList() },
+            pollEndTime = endTime
         )
         messagesRef.child(key).setValue(message.toMap()).await()
+    }
+
+    /**
+     * 역대 랭킹 조회 (상위 10명)
+     */
+    fun getAllTimeRecords(): Flow<List<AllTimeRecord>> = callbackFlow {
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val records = snapshot.children.mapNotNull { child ->
+                    try {
+                        val oderId = child.child("userId").getValue(String::class.java) ?: ""
+                        val nickname = child.child("nickname").getValue(String::class.java) ?: ""
+                        val durationMillis = child.child("durationMillis").getValue(Long::class.java) ?: 0L
+                        val achievedAt = child.child("achievedAt").getValue(Long::class.java) ?: 0L
+                        AllTimeRecord(oderId, nickname, durationMillis, achievedAt)
+                    } catch (e: Exception) {
+                        null
+                    }
+                }.sortedByDescending { it.durationMillis }
+                    .take(10)
+                trySend(records)
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                trySend(emptyList())
+            }
+        }
+
+        allTimeRecordsRef.addValueEventListener(listener)
+
+        awaitClose {
+            allTimeRecordsRef.removeEventListener(listener)
+        }
+    }
+
+    /**
+     * 역대 기록 저장/업데이트
+     * 사용자의 기존 기록보다 높으면 업데이트
+     */
+    suspend fun updateAllTimeRecord(userId: String, nickname: String, durationMillis: Long) {
+        try {
+            val snapshot = allTimeRecordsRef.child(userId).get().await()
+            val existingDuration = snapshot.child("durationMillis").getValue(Long::class.java) ?: 0L
+
+            if (durationMillis > existingDuration) {
+                val record = AllTimeRecord(
+                    oderId = userId,
+                    nickname = nickname,
+                    durationMillis = durationMillis,
+                    achievedAt = System.currentTimeMillis()
+                )
+                allTimeRecordsRef.child(userId).setValue(record.toMap()).await()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    // ========== 관리자 기능 ==========
+
+    /**
+     * 관리자: 사용자 강퇴
+     */
+    suspend fun kickUser(userId: String) {
+        try {
+            usersRef.child(userId).child("isOnline").setValue(false).await()
+            usersRef.child(userId).child("kicked").setValue(true).await()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    /**
+     * 관리자: 사용자 계급 변경 (세션 시작 시간 조정)
+     */
+    suspend fun changeUserRank(userId: String, newRank: EliteRank) {
+        try {
+            // 해당 계급에 맞는 세션 시작 시간 계산
+            val requiredDuration = newRank.minMinutes * 60 * 1000L
+            val newStartTime = System.currentTimeMillis() - requiredDuration
+            usersRef.child(userId).child("sessionStartTime").setValue(newStartTime).await()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 }

@@ -2,11 +2,15 @@ package com.elites.fullcharge.ui.components
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -24,6 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.elites.fullcharge.data.AllTimeRecord
 import com.elites.fullcharge.data.EliteRank
 import com.elites.fullcharge.data.EliteUser
 import com.elites.fullcharge.ui.theme.*
@@ -218,7 +223,284 @@ private fun 최고등급배너(modifier: Modifier = Modifier) {
 }
 
 /**
- * 실시간 랭킹
+ * 스와이프 가능한 리더보드 (실시간 + 역대 랭킹)
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun 스와이프리더보드(
+    사용자들: List<EliteUser>,
+    역대기록들: List<AllTimeRecord>,
+    현재사용자ID: String,
+    onCollapse: () -> Unit = {},
+    modifier: Modifier = Modifier
+) {
+    val pagerState = rememberPagerState(pageCount = { 2 })
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(BackgroundGray)
+            .padding(16.dp)
+    ) {
+        // 탭 인디케이터
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center
+        ) {
+            repeat(2) { index ->
+                val isSelected = pagerState.currentPage == index
+                Box(
+                    modifier = Modifier
+                        .padding(horizontal = 4.dp)
+                        .size(if (isSelected) 24.dp else 8.dp, 8.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (isSelected) TossBlue else DividerGray
+                        )
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // 페이저 콘텐츠
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxWidth()
+        ) { page ->
+            when (page) {
+                0 -> 실시간랭킹콘텐츠(
+                    사용자들 = 사용자들,
+                    현재사용자ID = 현재사용자ID
+                )
+                1 -> 역대랭킹콘텐츠(
+                    역대기록들 = 역대기록들,
+                    현재사용자ID = 현재사용자ID
+                )
+            }
+        }
+
+        // 접기 버튼
+        Spacer(modifier = Modifier.height(12.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .clickable { onCollapse() }
+                .padding(vertical = 8.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.KeyboardArrowUp,
+                contentDescription = "접기",
+                tint = TextSecondary,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+                text = "접기",
+                fontSize = 13.sp,
+                color = TextSecondary
+            )
+        }
+    }
+}
+
+/**
+ * 실시간 랭킹 콘텐츠
+ */
+@Composable
+private fun 실시간랭킹콘텐츠(
+    사용자들: List<EliteUser>,
+    현재사용자ID: String
+) {
+    val 정렬된사용자들 = 사용자들
+        .filter { it.isOnline }
+        .sortedByDescending { it.sessionDuration }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "실시간 랭킹",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary
+            )
+            Text(
+                text = "${정렬된사용자들.size}명 접속 중",
+                fontSize = 12.sp,
+                color = TextSecondary
+            )
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        if (정렬된사용자들.isEmpty()) {
+            Text(
+                text = "조용하네요. 당신이 첫 번째예요",
+                fontSize = 14.sp,
+                color = TextSecondary,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center
+            )
+        } else {
+            정렬된사용자들.take(5).forEachIndexed { index, user ->
+                리더보드항목(
+                    순위 = index + 1,
+                    사용자 = user,
+                    본인여부 = user.userId == 현재사용자ID
+                )
+                if (index < 정렬된사용자들.size - 1 && index < 4) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 역대 랭킹 콘텐츠
+ */
+@Composable
+private fun 역대랭킹콘텐츠(
+    역대기록들: List<AllTimeRecord>,
+    현재사용자ID: String
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "역대 랭킹",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary
+            )
+            Text(
+                text = "최장 생존 기록",
+                fontSize = 12.sp,
+                color = TextSecondary
+            )
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        if (역대기록들.isEmpty()) {
+            Text(
+                text = "아직 기록이 없어요. 첫 번째 전설이 되어보세요!",
+                fontSize = 14.sp,
+                color = TextSecondary,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center
+            )
+        } else {
+            역대기록들.take(5).forEachIndexed { index, record ->
+                역대랭킹항목(
+                    순위 = index + 1,
+                    기록 = record,
+                    본인여부 = record.oderId == 현재사용자ID
+                )
+                if (index < 역대기록들.size - 1 && index < 4) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 역대 랭킹 항목
+ */
+@Composable
+private fun 역대랭킹항목(
+    순위: Int,
+    기록: AllTimeRecord,
+    본인여부: Boolean
+) {
+    val 계급 = 기록.rank
+    val 배경색 = when {
+        본인여부 -> TossBlue.copy(alpha = 0.1f)
+        순위 <= 3 -> BackgroundGray
+        else -> Color.Transparent
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(배경색)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // 순위 (메달 이모지 추가)
+        val 순위표시 = when (순위) {
+            1 -> "🥇"
+            2 -> "🥈"
+            3 -> "🥉"
+            else -> "$순위"
+        }
+        Text(
+            text = 순위표시,
+            fontSize = 16.sp,
+            fontWeight = if (순위 <= 3) FontWeight.Bold else FontWeight.Normal,
+            color = if (순위 <= 3) TossBlue else TextSecondary,
+            modifier = Modifier.width(28.dp)
+        )
+
+        // 등급 배지
+        val 배지색상 = when (계급) {
+            EliteRank.GENERAL, EliteRank.LIEUTENANT_GENERAL,
+            EliteRank.MAJOR_GENERAL, EliteRank.BRIGADIER_GENERAL -> Color(0xFFD97706)
+            EliteRank.COLONEL, EliteRank.LIEUTENANT_COLONEL, EliteRank.MAJOR -> Color(0xFF7C3AED)
+            EliteRank.CAPTAIN, EliteRank.FIRST_LIEUTENANT, EliteRank.SECOND_LIEUTENANT -> Color(0xFF059669)
+            EliteRank.SERGEANT_MAJOR, EliteRank.MASTER_SERGEANT,
+            EliteRank.SERGEANT_FIRST, EliteRank.STAFF_SERGEANT -> Color(0xFF2563EB)
+            else -> TextTertiary
+        }
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(4.dp))
+                .background(배지색상)
+                .padding(horizontal = 6.dp, vertical = 2.dp)
+        ) {
+            Text(
+                text = 계급.koreanName,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Medium,
+                color = Color.White
+            )
+        }
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        // 닉네임
+        Text(
+            text = if (본인여부) "${기록.nickname} (나)" else 기록.nickname,
+            fontSize = 14.sp,
+            fontWeight = if (본인여부) FontWeight.Bold else FontWeight.Normal,
+            color = if (본인여부) TossBlue else TextPrimary,
+            modifier = Modifier.weight(1f)
+        )
+
+        // 기록 시간
+        Text(
+            text = 기록.formattedDuration,
+            fontSize = 12.sp,
+            color = TextSecondary
+        )
+    }
+}
+
+/**
+ * 실시간 랭킹 (기존 호환용)
  */
 @Composable
 fun 실시간리더보드(
