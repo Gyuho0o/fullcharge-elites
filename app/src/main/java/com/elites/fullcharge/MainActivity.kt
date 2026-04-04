@@ -38,7 +38,6 @@ import com.elites.fullcharge.ui.screens.OnboardingScreen
 import com.elites.fullcharge.ui.theme.ElitesTheme
 import com.elites.fullcharge.util.SoundManager
 import com.google.android.gms.ads.MobileAds
-import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -84,22 +83,30 @@ class MainActivity : ComponentActivity() {
             ElitesTheme {
                 val uiState by viewModel.uiState.collectAsStateWithLifecycle()
                 var needsUpdate by remember { mutableStateOf(false) }
-                val coroutineScope = rememberCoroutineScope()
 
                 // 앱 시작 시 버전 체크
                 LaunchedEffect(Unit) {
-                    coroutineScope.launch {
+                    try {
                         val appConfigRepository = AppConfigRepository()
                         val minVersionCode = appConfigRepository.getMinVersionCode()
-                        val currentVersionCode = packageManager.getPackageInfo(packageName, 0).let {
+
+                        // 현재 앱 버전 코드
+                        val currentVersionCode = try {
+                            val packageInfo = packageManager.getPackageInfo(packageName, 0)
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                                it.longVersionCode.toInt()
+                                packageInfo.longVersionCode.toInt()
                             } else {
                                 @Suppress("DEPRECATION")
-                                it.versionCode
+                                packageInfo.versionCode
                             }
+                        } catch (e: Exception) {
+                            0  // 버전 확인 실패 시 업데이트 강제 안 함
                         }
-                        needsUpdate = minVersionCode > currentVersionCode
+
+                        needsUpdate = minVersionCode > 0 && minVersionCode > currentVersionCode
+                    } catch (e: Exception) {
+                        // 버전 체크 실패 시 그냥 앱 진행 (크래시 방지)
+                        needsUpdate = false
                     }
                 }
 
