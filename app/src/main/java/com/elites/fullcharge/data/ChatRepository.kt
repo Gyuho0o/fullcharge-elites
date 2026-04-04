@@ -189,6 +189,22 @@ class ChatRepository {
     }
 
     /**
+     * 봇 캐릭터별 메시지 전송
+     */
+    suspend fun sendBotMessageWithCharacter(character: BotCharacter, text: String) {
+        val key = messagesRef.push().key ?: UUID.randomUUID().toString()
+        val message = ChatMessage(
+            id = key,
+            userId = character.id,
+            nickname = character.nickname,
+            message = text,
+            timestamp = System.currentTimeMillis(),
+            rank = character.rank.name
+        )
+        messagesRef.child(key).setValue(message.toMap()).await()
+    }
+
+    /**
      * 봇 퀴즈를 투표로 전송
      */
     suspend fun sendBotQuizAsPoll(question: String, options: List<String>) {

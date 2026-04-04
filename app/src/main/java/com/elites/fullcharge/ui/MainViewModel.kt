@@ -209,9 +209,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             viewModelScope.launch {
                 val escapeCount = preferences.incrementCrisisEscapeCount()
                 checkCrisisEscapeAchievements(escapeCount)
+
+                // 다른 사용자에게도 보이는 시스템 메시지 전송
+                chatRepository.sendSystemMessage("${nickname}님이 위기에서 탈출했습니다! ⚡")
             }
 
-            // 위기 탈출 이벤트 발생 (다른 사용자에게 보이는 알림)
+            // 로컬 축하 이벤트 (본인에게만)
             emitChatEvent(ChatEvent.UserCrisisEscape(nickname))
         }
 
@@ -544,6 +547,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             // 봇 타이머 리셋 (새 메시지 전송 시)
             resetBotTimer()
+
+            // 봇 반응 체크 (유저 메시지에 봇이 반응)
+            checkBotReaction(text)
 
             // 답장 상태 초기화
             _uiState.update { it.copy(replyingTo = null) }
@@ -956,10 +962,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         when (content) {
             is BotContent.FunMessage -> {
-                chatRepository.sendBotMessage(content.message)
+                chatRepository.sendBotMessageWithCharacter(content.character, content.message)
             }
             is BotContent.TopicSuggestion -> {
-                chatRepository.sendBotMessage(content.topic)
+                chatRepository.sendBotMessageWithCharacter(content.character, content.topic)
+            }
+            is BotContent.Dialogue -> {
+                // 2인 대화 시나리오 실행
+                sendDialogueScenario(content.scenario)
             }
             is BotContent.Quiz -> {
                 // 퀴즈를 투표로 전송
@@ -968,6 +978,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     options = content.options
                 )
             }
+        }
+    }
+
+    /**
+     * 2인 대화 시나리오 실행
+     */
+    private suspend fun sendDialogueScenario(scenario: DialogueScenario) {
+        for (exchange in scenario.exchanges) {
+            // 각 대화 간 딜레이
+            delay(exchange.delayMs)
+            chatRepository.sendBotMessageWithCharacter(exchange.speaker, exchange.message)
+        }
+    }
+
+    /**
+     * 유저 메시지에 봇이 반응
+     */
+    private suspend fun checkBotReaction(userMessage: String) {
+        val reaction = BotContentRepository.getReactionToMessage(userMessage)
+        if (reaction != null) {
+            // 1~3초 랜덤 딜레이 후 반응
+            delay((1000L..3000L).random())
+            chatRepository.sendBotMessageWithCharacter(reaction.first, reaction.second)
         }
     }
 
