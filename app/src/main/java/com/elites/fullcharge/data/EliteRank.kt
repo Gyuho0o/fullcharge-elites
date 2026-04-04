@@ -155,7 +155,8 @@ data class EliteUser(
     val nickname: String = "",
     val sessionStartTime: Long = 0L,
     val lastActiveTime: Long = System.currentTimeMillis(),
-    val isOnline: Boolean = true
+    val isOnline: Boolean = true,
+    val isAdmin: Boolean = false
 ) {
     val sessionDuration: Long
         get() = if (sessionStartTime > 0) {

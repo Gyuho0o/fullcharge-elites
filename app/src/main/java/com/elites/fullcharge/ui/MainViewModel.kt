@@ -1073,7 +1073,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val adjustedStartTime = System.currentTimeMillis() - generalDuration
 
             chatRepository.setJoinedTime(System.currentTimeMillis())
-            chatRepository.joinChat(state.userId, ADMIN_NICKNAME)
+            chatRepository.joinChat(state.userId, ADMIN_NICKNAME, isAdmin = true)
 
             preferences.startSession()
 

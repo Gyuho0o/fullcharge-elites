@@ -237,8 +237,8 @@ class ChatRepository {
                         null
                     }
                 }.filter { user ->
-                    // isOnline이고 1분 이내 활동한 사용자만
-                    user.isOnline && (currentTime - user.lastActiveTime) < onlineThresholdMs
+                    // isOnline이고 1분 이내 활동한 사용자만 (관리자 제외)
+                    user.isOnline && !user.isAdmin && (currentTime - user.lastActiveTime) < onlineThresholdMs
                 }
                 trySend(users)
             }
@@ -253,13 +253,14 @@ class ChatRepository {
         }
     }
 
-    suspend fun joinChat(userId: String, nickname: String) {
+    suspend fun joinChat(userId: String, nickname: String, isAdmin: Boolean = false) {
         val user = EliteUser(
             userId = userId,
             nickname = nickname,
             sessionStartTime = System.currentTimeMillis(),
             lastActiveTime = System.currentTimeMillis(),
-            isOnline = true
+            isOnline = true,
+            isAdmin = isAdmin
         )
         usersRef.child(userId).setValue(user).await()
     }
@@ -304,7 +305,7 @@ class ChatRepository {
                 val count = snapshot.children.count { child ->
                     try {
                         val user = child.getValue(EliteUser::class.java)
-                        user != null && user.isOnline && (currentTime - user.lastActiveTime) < onlineThresholdMs
+                        user != null && user.isOnline && !user.isAdmin && (currentTime - user.lastActiveTime) < onlineThresholdMs
                     } catch (e: Exception) {
                         // 잘못된 형식의 데이터는 무시
                         false
