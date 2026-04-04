@@ -196,22 +196,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun cancelDangerCountdown() {
         dangerCountdownJob?.cancel()
 
-        // 위기 탈출 성공! 축하 이펙트 표시 및 업적 체크
-        val nickname = _uiState.value.nickname
-        viewModelScope.launch {
-            val escapeCount = preferences.incrementCrisisEscapeCount()
-            checkCrisisEscapeAchievements(escapeCount)
-        }
+        val currentState = _uiState.value
+        val dangerDuration = System.currentTimeMillis() - currentState.dangerStartTime
 
-        // 위기 탈출 이벤트 발생 (다른 사용자에게 보이는 알림)
-        emitChatEvent(ChatEvent.UserCrisisEscape(nickname))
+        // 위기 상태가 최소 2초 이상 지속된 경우에만 축하 이펙트 표시
+        // (입장 직후 배터리 상태 변동으로 인한 잘못된 감지 방지)
+        val showCelebration = currentState.dangerStartTime > 0 && dangerDuration >= 2000
+
+        if (showCelebration) {
+            // 위기 탈출 성공! 축하 이펙트 표시 및 업적 체크
+            val nickname = currentState.nickname
+            viewModelScope.launch {
+                val escapeCount = preferences.incrementCrisisEscapeCount()
+                checkCrisisEscapeAchievements(escapeCount)
+            }
+
+            // 위기 탈출 이벤트 발생 (다른 사용자에게 보이는 알림)
+            emitChatEvent(ChatEvent.UserCrisisEscape(nickname))
+        }
 
         _uiState.update {
             it.copy(
                 isInDanger = false,
                 dangerCountdown = 0,
                 dangerStartTime = 0L,
-                showCrisisEscapeCelebration = true
+                showCrisisEscapeCelebration = showCelebration
             )
         }
     }
