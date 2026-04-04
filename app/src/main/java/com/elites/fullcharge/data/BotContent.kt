@@ -141,23 +141,23 @@ object BotContentRepository {
         )
     )
 
-    // 유저 반응 트리거 (MZ 반말)
+    // 유저 반응 트리거 (자연스러운 반말)
     private val userReactionTriggers = listOf(
         UserReactionTrigger(
             keywords = listOf("안녕", "하이", "ㅎㅇ", "hi", "hello"),
             responses = listOf(
-                "ㅎㅇㅎㅇ",
-                "반가워~",
-                "왔어? ㅎㅎ",
-                "안녕안녕"
+                "안녕~",
+                "반가워",
+                "왔어?",
+                "하이하이"
             )
         ),
         UserReactionTrigger(
             keywords = listOf("심심", "지루", "할게없"),
             responses = listOf(
-                "나도 ㅠ",
-                "같이 놀자~",
-                "뭐 재밌는 거 없나",
+                "나도ㅜ",
+                "같이 놀자",
+                "진짜 할 게 없다",
                 "퀴즈 풀래?"
             )
         ),
@@ -165,25 +165,25 @@ object BotContentRepository {
             keywords = listOf("ㅋㅋ", "ㅎㅎ", "ㅋㅋㅋ", "ㅎㅎㅎ", "웃겨", "재밌"),
             responses = listOf(
                 "ㅋㅋㅋㅋㅋ",
-                "ㄹㅇ ㅋㅋ",
-                "웃기네 ㅋㅋ",
-                "나도 웃겼어 ㅋㅋ"
+                "진짜 ㅋㅋ",
+                "웃기네",
+                "나도 웃겼어"
             )
         ),
         UserReactionTrigger(
             keywords = listOf("배고파", "밥", "점심", "저녁", "아침", "뭐먹"),
             responses = listOf(
-                "나도 배고파...",
+                "나도 배고파",
                 "뭐 먹을 거야?",
-                "맛있는 거 먹어~",
-                "배달 ㄱㄱ"
+                "맛있는 거 먹어",
+                "배달 시켜"
             )
         ),
         UserReactionTrigger(
             keywords = listOf("졸려", "피곤", "자고싶", "잠"),
             responses = listOf(
-                "충전하면서 쉬어~",
-                "나도 졸려 ㅠ",
+                "충전하면서 쉬어",
+                "나도 졸려",
                 "잠깐 눈 붙여",
                 "커피 마셔"
             )
@@ -192,36 +192,36 @@ object BotContentRepository {
             keywords = listOf("퇴장", "나가", "나갔", "탈출"),
             responses = listOf(
                 "ㅋㅋㅋ 불쌍",
-                "충전기 꽂으라고 ㅋㅋ",
-                "다음엔 살아남아~",
-                "RIP..."
+                "충전기 꽂으라니까",
+                "다음엔 살아남아",
+                "안녕..."
             )
         ),
         UserReactionTrigger(
             keywords = listOf("99%", "99퍼", "위험", "카운트다운"),
             responses = listOf(
                 "어서 충전해!",
-                "빨리빨리!!",
-                "긴장되네...",
+                "빨리!!",
+                "긴장되네",
                 "살아남아!"
             )
         ),
         UserReactionTrigger(
             keywords = listOf("100%", "100퍼", "완충"),
             responses = listOf(
-                "ㅊㅋㅊㅋ",
-                "100% 최고~",
-                "완충 성공!",
-                "이제 안심이네 ㅎㅎ"
+                "오 축하해",
+                "100% 좋다",
+                "완충 성공",
+                "이제 안심이네"
             )
         ),
         UserReactionTrigger(
             keywords = listOf("뭐해", "뭐하세요", "뭐해요"),
             responses = listOf(
-                "나? 충전 중 ㅋㅋ",
-                "채팅하고 있지~",
+                "나? 충전 중",
+                "채팅하고 있지",
                 "너랑 얘기하고 있잖아",
-                "100% 유지 중~"
+                "100% 유지 중"
             )
         )
     )
