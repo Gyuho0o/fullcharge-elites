@@ -15,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -79,9 +80,8 @@ fun OnboardingScreen(
                 TextButton(onClick = onComplete) {
                     Text(
                         text = "건너뛰기",
-                        color = TextSecondary,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Medium
+                        color = TextTertiary,
+                        fontSize = 14.sp
                     )
                 }
             }

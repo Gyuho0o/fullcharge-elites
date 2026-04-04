@@ -29,7 +29,6 @@ class ElitePreferences(private val context: Context) {
         // 계급 복구용 이전 세션 정보
         val LAST_SESSION_DURATION = longPreferencesKey("last_session_duration")
         val LAST_SESSION_TIMESTAMP = longPreferencesKey("last_session_timestamp")
-        val WAS_BATTERY_EXILE = booleanPreferencesKey("was_battery_exile")  // 배터리 이탈 여부
         // 업적/통계
         val TOTAL_MESSAGES = intPreferencesKey("total_messages")
         val CRISIS_ESCAPE_COUNT = intPreferencesKey("crisis_escape_count")
@@ -149,21 +148,12 @@ class ElitePreferences(private val context: Context) {
     }
 
     /**
-     * 복구 시 광고가 필요한지 여부 (배터리 이탈인 경우만 광고 필요)
-     */
-    val restoreRequiresAd: Flow<Boolean> = context.dataStore.data.map { prefs ->
-        prefs[Keys.WAS_BATTERY_EXILE] ?: false
-    }
-
-    /**
      * 퇴장 시 현재 세션 저장 (복구용)
-     * @param wasBatteryExile true면 배터리 이탈 (광고 필요), false면 수동 퇴장 (무료 복구)
      */
-    suspend fun saveSessionForRestore(durationMs: Long, wasBatteryExile: Boolean = false) {
+    suspend fun saveSessionForRestore(durationMs: Long) {
         context.dataStore.edit { prefs ->
             prefs[Keys.LAST_SESSION_DURATION] = durationMs
             prefs[Keys.LAST_SESSION_TIMESTAMP] = System.currentTimeMillis()
-            prefs[Keys.WAS_BATTERY_EXILE] = wasBatteryExile
         }
     }
 
@@ -174,7 +164,6 @@ class ElitePreferences(private val context: Context) {
         context.dataStore.edit { prefs ->
             prefs[Keys.LAST_SESSION_DURATION] = 0L
             prefs[Keys.LAST_SESSION_TIMESTAMP] = 0L
-            prefs[Keys.WAS_BATTERY_EXILE] = false
         }
     }
 

@@ -42,7 +42,6 @@ data class MainUiState(
     val onboardingCompleted: Boolean = false,
     // 계급 복구 가능 여부 (이전 세션 시간)
     val restorableSessionDuration: Long? = null,
-    val restoreRequiresAd: Boolean = false,  // 복구 시 광고 필요 여부
     // 업적 관련
     val newlyUnlockedAchievement: Achievement? = null,
     val unlockedAchievements: Set<String> = emptySet(),
@@ -98,7 +97,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private const val COOLDOWN_MS = 1000L  // 1초 쿨다운
         private const val RATE_LIMIT_WINDOW_MS = 10000L  // 10초 윈도우
         private const val RATE_LIMIT_MAX_MESSAGES = 5  // 10초에 최대 5개
-        private const val DANGER_DEBOUNCE_MS = 3000L  // 위기 탈출 후 3초간 재진입 방지
     }
 
     init {
@@ -115,13 +113,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             preferences.restorableSessionDuration.collect { duration ->
                 _uiState.update { it.copy(restorableSessionDuration = duration) }
-            }
-        }
-
-        // 복구 시 광고 필요 여부 관찰
-        viewModelScope.launch {
-            preferences.restoreRequiresAd.collect { requiresAd ->
-                _uiState.update { it.copy(restoreRequiresAd = requiresAd) }
             }
         }
 
@@ -162,16 +153,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                 if (isInChat) {
                     // 배터리가 100% 미만 + 충전 안 하면 위험 모드 시작
-                    // 이미 카운트다운 중이거나 최근에 위험 모드였으면 시작하지 않음 (디바운싱)
-                    val isCountdownActive = dangerCountdownJob?.isActive == true
-                    val recentlyEscaped = System.currentTimeMillis() - lastDangerEscapeTime < DANGER_DEBOUNCE_MS
-
-                    if (state.level < 100 && !state.isCharging && !wasInDanger && !isCountdownActive && !recentlyEscaped) {
+                    if (state.level < 100 && !state.isCharging && !wasInDanger) {
                         startDangerCountdown()
                     }
 
-                    // 다시 충전 시작하거나 100%가 되면 위험 모드 해제 (살았다!)
-                    if ((state.isCharging || state.level == 100) && wasInDanger) {
+                    // 다시 충전 시작하면 위험 모드 해제 (살았다!)
+                    if (state.isCharging && wasInDanger) {
                         cancelDangerCountdown()
                     }
                 }
@@ -179,13 +166,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // 위험 모드 디바운싱 (빠른 충전 상태 변동 방지)
-    private var lastDangerEscapeTime = 0L
-
     private fun startDangerCountdown() {
-        // 이미 카운트다운 중이면 무시
-        if (dangerCountdownJob?.isActive == true) return
-
         dangerCountdownJob?.cancel()
 
         val startTime = System.currentTimeMillis()
@@ -216,11 +197,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         dangerCountdownJob?.cancel()
 
         val currentState = _uiState.value
-        val currentTime = System.currentTimeMillis()
-        val dangerDuration = currentTime - currentState.dangerStartTime
-
-        // 디바운싱을 위해 탈출 시간 기록
-        lastDangerEscapeTime = currentTime
+        val dangerDuration = System.currentTimeMillis() - currentState.dangerStartTime
 
         // 위기 상태가 최소 2초 이상 지속된 경우에만 축하 이펙트 표시
         // (입장 직후 배터리 상태 변동으로 인한 잘못된 감지 방지)
@@ -651,9 +628,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val state = _uiState.value
 
             // 세션 복구용으로 저장 (하사 이상인 경우에만 의미있음)
-            // 배터리 이탈이므로 복구 시 광고 필요
             if (state.sessionDuration >= ElitePreferences.MIN_RESTORE_DURATION_MS) {
-                preferences.saveSessionForRestore(state.sessionDuration, wasBatteryExile = true)
+                preferences.saveSessionForRestore(state.sessionDuration)
             }
 
             // 퇴장 알림 시스템 메시지 전송
@@ -703,9 +679,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val state = _uiState.value
 
             // 세션 복구용으로 저장 (하사 이상인 경우에만 의미있음)
-            // 수동 퇴장이므로 복구 시 광고 불필요
             if (state.sessionDuration >= ElitePreferences.MIN_RESTORE_DURATION_MS) {
-                preferences.saveSessionForRestore(state.sessionDuration, wasBatteryExile = false)
+                preferences.saveSessionForRestore(state.sessionDuration)
             }
 
             // 퇴장 알림 시스템 메시지 전송

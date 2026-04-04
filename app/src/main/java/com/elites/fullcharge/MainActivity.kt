@@ -81,9 +81,6 @@ class MainActivity : ComponentActivity() {
             ElitesTheme {
                 val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-                // TODO: 강제 업데이트 기능은 안정화 후 다시 활성화
-                // Firebase app_config/min_version_code 사용
-
                 // 화면 전환 시 사운드 재생
                 LaunchedEffect(uiState.currentScreen) {
                     when (uiState.currentScreen) {
@@ -107,8 +104,8 @@ class MainActivity : ComponentActivity() {
                         adManager.loadInterstitialAd() // 퇴장 대비 미리 로드
                     } else {
                         풀파워모드종료()
-                        // 복구 가능한 세션이 있고, 광고가 필요한 경우에만 보상형 광고 미리 로드
-                        if (uiState.restorableSessionDuration != null && uiState.restoreRequiresAd) {
+                        // 복구 가능한 세션이 있으면 보상형 광고 미리 로드
+                        if (uiState.restorableSessionDuration != null) {
                             adManager.loadRewardedAd()
                         }
                     }
@@ -170,10 +167,6 @@ class MainActivity : ComponentActivity() {
                                 }
                             )
                         },
-                        onRestoreFree = { previousDuration ->
-                            // 수동 퇴장의 경우 광고 없이 바로 복구
-                            viewModel.enterChatWithRestore(previousDuration)
-                        },
                         onDismissRestore = { viewModel.dismissRestorableSession() },
                         onDismissAchievement = { viewModel.dismissAchievementPopup() },
                         onDismissCrisisEscape = { viewModel.dismissCrisisEscapeCelebration() },
@@ -203,7 +196,6 @@ class MainActivity : ComponentActivity() {
         onVotePoll: (String, Int) -> Unit,
         onExileDismiss: () -> Unit,
         onRestoreWithAd: (Long) -> Unit,
-        onRestoreFree: (Long) -> Unit,
         onDismissRestore: () -> Unit,
         onDismissAchievement: () -> Unit,
         onDismissCrisisEscape: () -> Unit,
@@ -244,9 +236,7 @@ class MainActivity : ComponentActivity() {
                         onlineUserCount = uiState.onlineUserCount,
                         onEnterPortal = onEnterPortal,
                         restorableSessionDuration = uiState.restorableSessionDuration,
-                        restoreRequiresAd = uiState.restoreRequiresAd,
                         onRestoreWithAd = onRestoreWithAd,
-                        onRestoreFree = onRestoreFree,
                         onDismissRestore = onDismissRestore
                     )
                 }

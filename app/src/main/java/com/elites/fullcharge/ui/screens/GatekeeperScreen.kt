@@ -39,9 +39,7 @@ fun GatekeeperScreen(
     onlineUserCount: Int,
     onEnterPortal: () -> Unit,
     restorableSessionDuration: Long? = null,
-    restoreRequiresAd: Boolean = false,
     onRestoreWithAd: (Long) -> Unit = {},
-    onRestoreFree: (Long) -> Unit = {},
     onDismissRestore: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -63,14 +61,9 @@ fun GatekeeperScreen(
     if (showRestoreDialog && restorableSessionDuration != null) {
         RankRestoreDialog(
             previousDuration = restorableSessionDuration,
-            requiresAd = restoreRequiresAd,
-            onRestore = {
+            onRestoreWithAd = {
                 showRestoreDialog = false
-                if (restoreRequiresAd) {
-                    onRestoreWithAd(restorableSessionDuration)
-                } else {
-                    onRestoreFree(restorableSessionDuration)
-                }
+                onRestoreWithAd(restorableSessionDuration)
             },
             onStartFresh = {
                 showRestoreDialog = false
@@ -293,7 +286,7 @@ private fun EliteWelcomeContent(
             label = "userCount"
         ) { count ->
             Text(
-                text = "현재 ${count}명의 전우회원이 대화 중",
+                text = "현재 ${count}명의 엘리트가 대화 중",
                 fontSize = 14.sp,
                 color = TextSecondary
             )
@@ -438,13 +431,11 @@ private fun UnworthyContent(
 
 /**
  * 계급 복구 다이얼로그
- * @param requiresAd true면 광고 필요 (배터리 이탈), false면 무료 복구 (수동 퇴장)
  */
 @Composable
 private fun RankRestoreDialog(
     previousDuration: Long,
-    requiresAd: Boolean,
-    onRestore: () -> Unit,
+    onRestoreWithAd: () -> Unit,
     onStartFresh: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -516,11 +507,7 @@ private fun RankRestoreDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    text = if (requiresAd) {
-                        "광고를 시청하면 이전 계급으로\n바로 시작할 수 있어요"
-                    } else {
-                        "이전 계급을 복구하고\n바로 시작할 수 있어요"
-                    },
+                    text = "광고를 시청하면 이전 계급으로\n바로 시작할 수 있어요",
                     fontSize = 13.sp,
                     color = TextTertiary,
                     textAlign = TextAlign.Center,
@@ -530,7 +517,7 @@ private fun RankRestoreDialog(
         },
         confirmButton = {
             Button(
-                onClick = onRestore,
+                onClick = onRestoreWithAd,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = TossBlue
                 ),
@@ -538,7 +525,7 @@ private fun RankRestoreDialog(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    text = if (requiresAd) "광고 보고 계급 복구" else "계급 복구",
+                    text = "광고 보고 계급 복구",
                     fontWeight = FontWeight.SemiBold
                 )
             }
