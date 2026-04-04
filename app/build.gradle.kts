@@ -12,8 +12,8 @@ android {
         applicationId = "com.elites.fullcharge"
         minSdk = 26
         targetSdk = 35
-        versionCode = 21
-        versionName = "1.2.6"
+        versionCode = 22
+        versionName = "1.3.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -82,6 +82,10 @@ dependencies {
 
     // Google AdMob
     implementation("com.google.android.gms:play-services-ads:22.6.0")
+
+    // Google Play In-App Updates
+    implementation("com.google.android.play:app-update:2.1.0")
+    implementation("com.google.android.play:app-update-ktx:2.1.0")
 
     // Link Preview
     implementation("org.jsoup:jsoup:1.17.2")

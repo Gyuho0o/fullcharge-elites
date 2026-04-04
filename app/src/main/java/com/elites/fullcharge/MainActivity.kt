@@ -11,8 +11,11 @@ import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.*
@@ -34,14 +37,35 @@ import com.elites.fullcharge.ui.screens.ExileScreen
 import com.elites.fullcharge.ui.screens.GatekeeperScreen
 import com.elites.fullcharge.ui.screens.OnboardingScreen
 import com.elites.fullcharge.ui.theme.ElitesTheme
+import com.elites.fullcharge.update.InAppUpdateManager
 import com.elites.fullcharge.util.SoundManager
 import com.google.android.gms.ads.MobileAds
+import com.google.android.play.core.install.model.ActivityResult
 
 class MainActivity : ComponentActivity() {
 
     private val viewModel: MainViewModel by viewModels()
     private lateinit var adManager: AdManager
     private lateinit var soundManager: SoundManager
+    private lateinit var inAppUpdateManager: InAppUpdateManager
+
+    // In-App Update 결과 처리
+    private val updateLauncher: ActivityResultLauncher<IntentSenderRequest> =
+        registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+            when (result.resultCode) {
+                RESULT_OK -> {
+                    Log.d("InAppUpdate", "Update accepted")
+                }
+                RESULT_CANCELED -> {
+                    // 사용자가 업데이트를 취소함 - 다시 시도하도록 유도
+                    Log.d("InAppUpdate", "Update cancelled by user")
+                    checkForAppUpdate()
+                }
+                ActivityResult.RESULT_IN_APP_UPDATE_FAILED -> {
+                    Log.e("InAppUpdate", "Update failed")
+                }
+            }
+        }
 
     private val batteryReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -76,6 +100,9 @@ class MainActivity : ComponentActivity() {
         // AdMob 초기화
         MobileAds.initialize(this) {}
         adManager = AdManager(this)
+
+        // In-App Update 초기화 및 체크
+        setupInAppUpdate()
 
         setContent {
             ElitesTheme {
@@ -343,6 +370,11 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         viewModel.updateBatteryStatus()
+
+        // 업데이트 상태 재확인 (백그라운드에서 복귀 시)
+        if (::inAppUpdateManager.isInitialized) {
+            checkForAppUpdate()
+        }
     }
 
     override fun onDestroy() {
@@ -353,5 +385,46 @@ class MainActivity : ComponentActivity() {
             // 이미 해제됨
         }
         soundManager.release()
+
+        // In-App Update 리스너 해제
+        if (::inAppUpdateManager.isInitialized) {
+            inAppUpdateManager.unregister()
+        }
+    }
+
+    /**
+     * In-App Update 초기화
+     */
+    private fun setupInAppUpdate() {
+        inAppUpdateManager = InAppUpdateManager(this)
+
+        inAppUpdateManager.onUpdateAvailable = { info ->
+            // 업데이트 가능 - 즉시 업데이트 시작
+            Log.d("InAppUpdate", "Update available: ${info.availableVersionCode()}")
+            inAppUpdateManager.startImmediateUpdate(updateLauncher)
+        }
+
+        inAppUpdateManager.onUpdateDownloaded = {
+            // 다운로드 완료 - 설치
+            inAppUpdateManager.completeUpdate()
+        }
+
+        inAppUpdateManager.onNoUpdateAvailable = {
+            Log.d("InAppUpdate", "No update available")
+        }
+
+        inAppUpdateManager.onUpdateFailed = {
+            Log.e("InAppUpdate", "Update failed")
+        }
+
+        // 업데이트 체크 시작
+        checkForAppUpdate()
+    }
+
+    /**
+     * 앱 업데이트 확인
+     */
+    private fun checkForAppUpdate() {
+        inAppUpdateManager.checkForUpdate()
     }
 }
