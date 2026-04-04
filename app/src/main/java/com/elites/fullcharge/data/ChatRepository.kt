@@ -231,9 +231,14 @@ class ChatRepository {
                 val currentTime = System.currentTimeMillis()
                 val users = snapshot.children.mapNotNull { child ->
                     try {
-                        child.getValue(EliteUser::class.java)
+                        val userId = child.child("userId").getValue(String::class.java) ?: ""
+                        val nickname = child.child("nickname").getValue(String::class.java) ?: ""
+                        val sessionStartTime = child.child("sessionStartTime").getValue(Long::class.java) ?: 0L
+                        val lastActiveTime = child.child("lastActiveTime").getValue(Long::class.java) ?: 0L
+                        val isOnline = child.child("isOnline").value == true
+                        val isAdmin = child.child("isAdmin").value == true
+                        EliteUser(userId, nickname, sessionStartTime, lastActiveTime, isOnline, isAdmin)
                     } catch (e: Exception) {
-                        // 잘못된 형식의 데이터는 무시
                         null
                     }
                 }.filter { user ->
@@ -304,10 +309,11 @@ class ChatRepository {
                 val currentTime = System.currentTimeMillis()
                 val count = snapshot.children.count { child ->
                     try {
-                        val user = child.getValue(EliteUser::class.java)
-                        user != null && user.isOnline && !user.isAdmin && (currentTime - user.lastActiveTime) < onlineThresholdMs
+                        val isOnline = child.child("isOnline").value == true
+                        val isAdmin = child.child("isAdmin").value == true
+                        val lastActiveTime = child.child("lastActiveTime").getValue(Long::class.java) ?: 0L
+                        isOnline && !isAdmin && (currentTime - lastActiveTime) < onlineThresholdMs
                     } catch (e: Exception) {
-                        // 잘못된 형식의 데이터는 무시
                         false
                     }
                 }
