@@ -216,7 +216,12 @@ class ChatRepository {
             override fun onDataChange(snapshot: DataSnapshot) {
                 val currentTime = System.currentTimeMillis()
                 val users = snapshot.children.mapNotNull { child ->
-                    child.getValue(EliteUser::class.java)
+                    try {
+                        child.getValue(EliteUser::class.java)
+                    } catch (e: Exception) {
+                        // 잘못된 형식의 데이터는 무시
+                        null
+                    }
                 }.filter { user ->
                     // isOnline이고 1분 이내 활동한 사용자만
                     user.isOnline && (currentTime - user.lastActiveTime) < onlineThresholdMs
@@ -283,8 +288,13 @@ class ChatRepository {
             override fun onDataChange(snapshot: DataSnapshot) {
                 val currentTime = System.currentTimeMillis()
                 val count = snapshot.children.count { child ->
-                    val user = child.getValue(EliteUser::class.java)
-                    user != null && user.isOnline && (currentTime - user.lastActiveTime) < onlineThresholdMs
+                    try {
+                        val user = child.getValue(EliteUser::class.java)
+                        user != null && user.isOnline && (currentTime - user.lastActiveTime) < onlineThresholdMs
+                    } catch (e: Exception) {
+                        // 잘못된 형식의 데이터는 무시
+                        false
+                    }
                 }
                 trySend(count)
             }
