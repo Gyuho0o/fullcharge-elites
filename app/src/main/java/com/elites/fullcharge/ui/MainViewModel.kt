@@ -729,6 +729,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             timeEventJob?.cancel()
             botContentJob?.cancel()
 
+            // 관리자였으면 원래 닉네임 복원
+            val restoredNickname = if (wasAdminMode) {
+                preferences.getNickname()
+            } else {
+                state.nickname
+            }
+
             _uiState.update {
                 it.copy(
                     currentScreen = AppScreen.GATEKEEPER,
@@ -739,7 +746,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     sessionStartTime = 0L,
                     sessionDuration = 0L,
                     comboState = ComboState(),  // 콤보 리셋
-                    isAdminMode = false  // 관리자 모드 비활성화
+                    isAdminMode = false,  // 관리자 모드 비활성화
+                    nickname = restoredNickname  // 닉네임 복원
                 )
             }
         }
