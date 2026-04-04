@@ -27,12 +27,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import android.view.WindowManager
 import androidx.core.view.WindowCompat
 import com.elites.fullcharge.ad.AdManager
-import com.elites.fullcharge.data.AppConfigRepository
 import com.elites.fullcharge.ui.AppScreen
 import com.elites.fullcharge.ui.MainViewModel
 import com.elites.fullcharge.ui.screens.ChatScreen
 import com.elites.fullcharge.ui.screens.ExileScreen
-import com.elites.fullcharge.ui.screens.ForceUpdateScreen
 import com.elites.fullcharge.ui.screens.GatekeeperScreen
 import com.elites.fullcharge.ui.screens.OnboardingScreen
 import com.elites.fullcharge.ui.theme.ElitesTheme
@@ -82,54 +80,9 @@ class MainActivity : ComponentActivity() {
         setContent {
             ElitesTheme {
                 val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-                var needsUpdate by remember { mutableStateOf(false) }
 
-                // 앱 시작 시 버전 체크
-                LaunchedEffect(Unit) {
-                    try {
-                        val appConfigRepository = AppConfigRepository()
-                        val minVersionCode = appConfigRepository.getMinVersionCode()
-
-                        // 현재 앱 버전 코드
-                        val currentVersionCode = try {
-                            val packageInfo = packageManager.getPackageInfo(packageName, 0)
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                                packageInfo.longVersionCode.toInt()
-                            } else {
-                                @Suppress("DEPRECATION")
-                                packageInfo.versionCode
-                            }
-                        } catch (e: Exception) {
-                            0  // 버전 확인 실패 시 업데이트 강제 안 함
-                        }
-
-                        needsUpdate = minVersionCode > 0 && minVersionCode > currentVersionCode
-                    } catch (e: Exception) {
-                        // 버전 체크 실패 시 그냥 앱 진행 (크래시 방지)
-                        needsUpdate = false
-                    }
-                }
-
-                // 강제 업데이트 필요 시
-                if (needsUpdate) {
-                    ForceUpdateScreen(
-                        onUpdateClick = {
-                            // Play Store로 이동
-                            val intent = Intent(Intent.ACTION_VIEW).apply {
-                                data = Uri.parse("market://details?id=$packageName")
-                            }
-                            try {
-                                startActivity(intent)
-                            } catch (e: Exception) {
-                                // Play Store 앱이 없으면 웹으로
-                                startActivity(Intent(Intent.ACTION_VIEW).apply {
-                                    data = Uri.parse("https://play.google.com/store/apps/details?id=$packageName")
-                                })
-                            }
-                        }
-                    )
-                    return@ElitesTheme
-                }
+                // TODO: 강제 업데이트 기능은 안정화 후 다시 활성화
+                // Firebase app_config/min_version_code 사용
 
                 // 화면 전환 시 사운드 재생
                 LaunchedEffect(uiState.currentScreen) {
