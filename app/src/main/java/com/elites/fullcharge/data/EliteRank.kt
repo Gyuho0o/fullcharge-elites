@@ -39,92 +39,92 @@ enum class EliteRank(
         minMinutes = 15,
         maxMinutes = 30
     ),
-    // 부사관 (NCO) - 30분~8시간
+    // 부사관 (NCO) - 30분~3시간
     STAFF_SERGEANT(
         koreanName = "하사",
         description = "하사 임관! 이제 직업군인이다",
         minMinutes = 30,
-        maxMinutes = 60
+        maxMinutes = 45
     ),
     SERGEANT_FIRST(
         koreanName = "중사",
         description = "중사 진급! 부대의 기둥",
-        minMinutes = 60,
-        maxMinutes = 120
+        minMinutes = 45,
+        maxMinutes = 90
     ),
     MASTER_SERGEANT(
         koreanName = "상사",
         description = "상사 진급! 베테랑의 위엄",
-        minMinutes = 120,
-        maxMinutes = 240
+        minMinutes = 90,
+        maxMinutes = 150
     ),
     SERGEANT_MAJOR(
         koreanName = "원사",
         description = "원사 진급! 부사관의 정점",
-        minMinutes = 240,
-        maxMinutes = 480
+        minMinutes = 150,
+        maxMinutes = 210
     ),
-    // 위관급 장교 (Company Officers) - 8~24시간
+    // 위관급 장교 (Company Officers) - 3.5시간~12시간
     SECOND_LIEUTENANT(
         koreanName = "소위",
         description = "소위 임관! 장교의 첫 걸음",
-        minMinutes = 480,
-        maxMinutes = 720
+        minMinutes = 210,
+        maxMinutes = 300
     ),
     FIRST_LIEUTENANT(
         koreanName = "중위",
         description = "중위 진급! 실전 지휘관",
-        minMinutes = 720,
-        maxMinutes = 1080
+        minMinutes = 300,
+        maxMinutes = 480
     ),
     CAPTAIN(
         koreanName = "대위",
         description = "대위 진급! 중대장의 위엄",
-        minMinutes = 1080,
-        maxMinutes = 1440
+        minMinutes = 480,
+        maxMinutes = 720
     ),
-    // 영관급 장교 (Field Officers) - 1~7일
+    // 영관급 장교 (Field Officers) - 12시간~4일
     MAJOR(
         koreanName = "소령",
         description = "소령 진급! 참모의 시작",
-        minMinutes = 1440,
-        maxMinutes = 2880
+        minMinutes = 720,
+        maxMinutes = 1440
     ),
     LIEUTENANT_COLONEL(
         koreanName = "중령",
         description = "중령 진급! 대대장급 지휘관",
-        minMinutes = 2880,
-        maxMinutes = 5760
+        minMinutes = 1440,
+        maxMinutes = 2880
     ),
     COLONEL(
         koreanName = "대령",
         description = "대령 진급! 연대장의 위엄",
-        minMinutes = 5760,
-        maxMinutes = 10080
+        minMinutes = 2880,
+        maxMinutes = 5760
     ),
-    // 장성 (General Officers) - 1주~1달
+    // 장성 (General Officers) - 4일~7일
     BRIGADIER_GENERAL(
         koreanName = "준장",
         description = "⭐ 준장 진급! 별이 빛난다",
-        minMinutes = 10080,
-        maxMinutes = 20160
+        minMinutes = 5760,
+        maxMinutes = 7200
     ),
     MAJOR_GENERAL(
         koreanName = "소장",
         description = "⭐⭐ 소장 진급! 사단장급",
-        minMinutes = 20160,
-        maxMinutes = 30240
+        minMinutes = 7200,
+        maxMinutes = 8640
     ),
     LIEUTENANT_GENERAL(
         koreanName = "중장",
         description = "⭐⭐⭐ 중장 진급! 군단장급",
-        minMinutes = 30240,
-        maxMinutes = 43200
+        minMinutes = 8640,
+        maxMinutes = 10080
     ),
     GENERAL(
         koreanName = "대장",
         description = "⭐⭐⭐⭐ 대장! 당신이 전설입니다",
-        minMinutes = 43200,
+        minMinutes = 10080,
         maxMinutes = Long.MAX_VALUE
     );
 

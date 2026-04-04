@@ -46,6 +46,12 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -169,9 +175,12 @@ fun ChatScreen(
     val imeBottom = WindowInsets.ime.getBottom(density)
     val isKeyboardVisible = imeBottom > 0
 
-    // 새 메시지가 오면 자동 스크롤
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) {
+    // 새 메시지가 오면 자동 스크롤 (마지막 메시지 ID 기준으로 더 안정적)
+    val lastMessageId = messages.lastOrNull()?.id
+    LaunchedEffect(lastMessageId) {
+        if (messages.isNotEmpty() && lastMessageId != null) {
+            // 약간의 딜레이로 리스트 안정화 후 스크롤
+            delay(50)
             listState.animateScrollToItem(messages.size - 1)
         }
     }
@@ -190,24 +199,34 @@ fun ChatScreen(
     val isHighRank = currentRankForEffects.ordinal >= EliteRank.SECOND_LIEUTENANT.ordinal
     val isGeneral = currentRankForEffects.ordinal >= EliteRank.BRIGADIER_GENERAL.ordinal
 
+    // 충전 중일 때만 화려한 효과 표시
+    val showEffects = batteryState.isCharging
+
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(BackgroundWhite)
     ) {
-        // 배경 파티클 효과 (더 많이)
-        DenseBackgroundParticles()
+        // 배경 파티클 효과 (충전 중일 때만)
+        if (showEffects) {
+            DenseBackgroundParticles()
+        }
 
-        // 배경 번개 (간헐적) - 고계급일수록 더 자주
-        BackgroundLightning(enabled = true, intensityLevel = if (isGeneral) 3 else if (isHighRank) 2 else 1)
+        // 배경 번개 (충전 중일 때만, 고계급일수록 더 자주)
+        BackgroundLightning(
+            enabled = showEffects,
+            intensityLevel = if (isGeneral) 3 else if (isHighRank) 2 else 1
+        )
 
-        // 장성급 전용 골드 파티클
-        if (isGeneral) {
+        // 장성급 전용 골드 파티클 (충전 중일 때만)
+        if (isGeneral && showEffects) {
             GoldAuraParticles()
         }
 
-        // 메시지 전송 시 번개 효과
-        MessageSendLightning(trigger = messageSentTrigger)
+        // 메시지 전송 시 번개 효과 (충전 중일 때만)
+        if (showEffects) {
+            MessageSendLightning(trigger = messageSentTrigger)
+        }
 
         // 위험 경고 오버레이
         if (isInDanger) {
@@ -228,7 +247,7 @@ fun ChatScreen(
                 DangerWarningBar(countdown = dangerCountdown)
             }
 
-            // 상단 바 (키보드 올라와도 고정)
+            // 상단 바 (키보드 올라오면 내 정보 숨김)
             ChatTopBar(
                 batteryLevel = batteryState.level,
                 userCount = onlineUsers.size,
@@ -237,11 +256,16 @@ fun ChatScreen(
                 isLeaderboardExpanded = showLeaderboard,
                 onToggleLeaderboard = { showLeaderboard = !showLeaderboard },
                 onEditNickname = { showNicknameDialog = true },
-                onLeaveClick = { showLeaveDialog = true }
+                onLeaveClick = { showLeaveDialog = true },
+                showUserInfo = !isKeyboardVisible
             )
 
-            // 등급까지 남은 시간 (위험 모드일 땐 숨김, 고정 영역)
-            if (!isInDanger) {
+            // 등급까지 남은 시간 (위험 모드 또는 키보드 올라왔을 때 숨김)
+            AnimatedVisibility(
+                visible = !isInDanger && !isKeyboardVisible,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
                 진급카운트다운(
                     현재시간 = sessionDuration,
                     isExpanded = showPromotionCountdown,
@@ -641,7 +665,8 @@ private fun ChatTopBar(
     isLeaderboardExpanded: Boolean,
     onToggleLeaderboard: () -> Unit,
     onEditNickname: () -> Unit,
-    onLeaveClick: () -> Unit
+    onLeaveClick: () -> Unit,
+    showUserInfo: Boolean = true  // 키보드 올라오면 숨김
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "batteryPulse")
     val batteryAlpha by infiniteTransition.animateFloat(
@@ -757,41 +782,48 @@ private fun ChatTopBar(
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // 내 정보 영역 (클릭 가능)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(BackgroundGray)
-                    .clickable { onEditNickname() }
-                    .padding(12.dp),
-                verticalAlignment = Alignment.CenterVertically
+            // 내 정보 영역 (키보드 올라오면 숨김)
+            AnimatedVisibility(
+                visible = showUserInfo,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
             ) {
-                Text(
-                    text = "내 정보",
-                    fontSize = 11.sp,
-                    color = TextTertiary,
-                    modifier = Modifier.padding(end = 8.dp)
-                )
-                RankBadge(rank = rank)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = nickname,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = TextPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-                Icon(
-                    imageVector = Icons.Default.Edit,
-                    contentDescription = "닉네임 수정",
-                    tint = TextTertiary,
-                    modifier = Modifier.size(16.dp)
-                )
+                Column {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(BackgroundGray)
+                            .clickable { onEditNickname() }
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "내 정보",
+                            fontSize = 11.sp,
+                            color = TextTertiary,
+                            modifier = Modifier.padding(end = 8.dp)
+                        )
+                        RankBadge(rank = rank)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = nickname,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = TextPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "닉네임 수정",
+                            tint = TextTertiary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
             }
         }
     }
@@ -1596,7 +1628,26 @@ private fun MessageInputBar(
                 OutlinedTextField(
                     value = value,
                     onValueChange = onValueChange,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .onPreviewKeyEvent { keyEvent ->
+                            // Enter 키: 전송 (Shift 안 누른 상태)
+                            // Shift+Enter: 줄바꿈
+                            if (keyEvent.key == Key.Enter && keyEvent.type == KeyEventType.KeyDown) {
+                                if (!keyEvent.isShiftPressed) {
+                                    // Enter만 누르면 전송
+                                    if (value.isNotBlank()) {
+                                        onSend()
+                                    }
+                                    true // 이벤트 소비
+                                } else {
+                                    // Shift+Enter는 줄바꿈 (기본 동작)
+                                    false
+                                }
+                            } else {
+                                false
+                            }
+                        },
                     placeholder = {
                         Text(
                             text = "메시지를 입력하세요 (@멘션)",
@@ -1611,7 +1662,7 @@ private fun MessageInputBar(
                         unfocusedTextColor = TextPrimary
                     ),
                     shape = RoundedCornerShape(24.dp),
-                    maxLines = 3,
+                    maxLines = 5,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                     keyboardActions = KeyboardActions(onSend = { onSend() })
                 )
@@ -2670,12 +2721,9 @@ private fun ChatEventBanner(
                 contentAlignment = Alignment.TopCenter
             ) {
                 when (chatEvent) {
-                    // 승급 알림 - UI로 구현
+                    // 승급 알림 - 중앙 RankUpCelebration만 사용 (상단 배너 제거)
                     is ChatEvent.UserRankUp -> {
-                        RankUpEventBanner(
-                            nickname = chatEvent.nickname,
-                            newRank = chatEvent.newRank
-                        )
+                        // 상단 배너 표시 안 함 (중앙 축하 UI에서 처리)
                     }
                     // 위기 탈출 - UI로 구현
                     is ChatEvent.UserCrisisEscape -> {
