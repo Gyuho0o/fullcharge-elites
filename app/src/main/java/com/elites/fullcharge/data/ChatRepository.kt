@@ -39,6 +39,7 @@ class ChatRepository {
                         val timestamp = child.child("timestamp").getValue(Long::class.java) ?: 0L
                         val rank = child.child("rank").getValue(String::class.java) ?: EliteRank.TRAINEE.name
                         val isSystemMessage = child.child("isSystemMessage").value == true
+                        val isBotMessage = child.child("isBotMessage").value == true
 
                         // readBy
                         val readBy = child.child("readBy").children
@@ -86,6 +87,7 @@ class ChatRepository {
                             timestamp = timestamp,
                             rank = rank,
                             isSystemMessage = isSystemMessage,
+                            isBotMessage = isBotMessage,
                             readBy = readBy,
                             replyToId = replyToId,
                             replyToNickname = replyToNickname,
@@ -166,6 +168,42 @@ class ChatRepository {
             timestamp = System.currentTimeMillis(),
             rank = EliteRank.TRAINEE.name,
             isSystemMessage = true
+        )
+        messagesRef.child(key).setValue(message.toMap()).await()
+    }
+
+    /**
+     * 봇 메시지 전송 (일반 유저처럼 보이도록)
+     */
+    suspend fun sendBotMessage(text: String) {
+        val key = messagesRef.push().key ?: UUID.randomUUID().toString()
+        val message = ChatMessage(
+            id = key,
+            userId = ChatMessage.BOT_USER_ID,
+            nickname = ChatMessage.BOT_NICKNAME,
+            message = text,
+            timestamp = System.currentTimeMillis(),
+            rank = EliteRank.SERGEANT.name  // 병장 계급으로 표시
+        )
+        messagesRef.child(key).setValue(message.toMap()).await()
+    }
+
+    /**
+     * 봇 퀴즈를 투표로 전송
+     */
+    suspend fun sendBotQuizAsPoll(question: String, options: List<String>) {
+        val key = messagesRef.push().key ?: UUID.randomUUID().toString()
+        val message = ChatMessage(
+            id = key,
+            userId = ChatMessage.BOT_USER_ID,
+            nickname = ChatMessage.BOT_NICKNAME,
+            message = question,
+            timestamp = System.currentTimeMillis(),
+            rank = EliteRank.SERGEANT.name,
+            isPoll = true,
+            pollQuestion = question,
+            pollOptions = options,
+            pollVotes = options.indices.associate { it.toString() to emptyList() }
         )
         messagesRef.child(key).setValue(message.toMap()).await()
     }

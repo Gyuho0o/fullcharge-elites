@@ -105,24 +105,45 @@ fun MessageLightningEffect(
 
 /**
  * 입장 화면용 배경 번개
+ * @param intensityLevel 1: 기본, 2: 영관급 (더 자주), 3: 장성급 (매우 자주 + 골드 번개)
  */
 @Composable
 fun BackgroundLightning(
     modifier: Modifier = Modifier,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    intensityLevel: Int = 1
 ) {
     if (!enabled) return
 
     var bolts by remember { mutableStateOf<List<LightningBolt>>(emptyList()) }
     var flashAlpha by remember { mutableFloatStateOf(0f) }
 
-    LaunchedEffect(enabled) {
-        while (enabled) {
-            delay(Random.nextLong(3000, 6000))
+    // 강도에 따른 딜레이 범위
+    val delayRange = when (intensityLevel) {
+        3 -> 1000L to 2500L  // 장성급: 매우 자주
+        2 -> 2000L to 4000L  // 영관급: 자주
+        else -> 3000L to 6000L  // 기본
+    }
 
-            // 번개 시퀀스
-            repeat(Random.nextInt(2, 4)) {
-                bolts = List(Random.nextInt(1, 3)) { generateLightningBolt() }
+    // 강도에 따른 번개 색상
+    val lightningColor = when (intensityLevel) {
+        3 -> Color(0xFFFFD700).copy(alpha = 0.7f)  // 장성급: 골드
+        else -> TossBlueLight.copy(alpha = 0.6f)
+    }
+
+    LaunchedEffect(enabled, intensityLevel) {
+        while (enabled) {
+            delay(Random.nextLong(delayRange.first, delayRange.second))
+
+            // 번개 시퀀스 (강도 높을수록 더 많은 번개)
+            val repeatCount = when (intensityLevel) {
+                3 -> Random.nextInt(3, 6)
+                2 -> Random.nextInt(2, 5)
+                else -> Random.nextInt(2, 4)
+            }
+
+            repeat(repeatCount) {
+                bolts = List(Random.nextInt(1, 3 + intensityLevel)) { generateLightningBolt() }
                 flashAlpha = Random.nextFloat() * 0.15f + 0.05f
                 delay(80)
                 flashAlpha = 0f
@@ -133,14 +154,91 @@ fun BackgroundLightning(
     }
 
     Canvas(modifier = modifier.fillMaxSize()) {
-        // 미세한 플래시
+        // 미세한 플래시 (장성급은 골드 플래시)
         if (flashAlpha > 0) {
-            drawRect(color = TossBlueLight.copy(alpha = flashAlpha))
+            val flashColor = if (intensityLevel == 3) {
+                Color(0xFFFFD700).copy(alpha = flashAlpha)
+            } else {
+                TossBlueLight.copy(alpha = flashAlpha)
+            }
+            drawRect(color = flashColor)
         }
 
         // 번개
         bolts.forEach { bolt ->
-            drawLightningBolt(bolt, TossBlueLight.copy(alpha = 0.6f))
+            drawLightningBolt(bolt, lightningColor)
+        }
+    }
+}
+
+/**
+ * 장성급 전용 골드 오라 파티클
+ */
+@Composable
+fun GoldAuraParticles(
+    modifier: Modifier = Modifier
+) {
+    data class GoldParticle(
+        val id: Int,
+        var x: Float,
+        var y: Float,
+        val size: Float,
+        val speed: Float,
+        val alpha: Float
+    )
+
+    var particles by remember {
+        mutableStateOf(
+            List(25) { index ->
+                GoldParticle(
+                    id = index,
+                    x = Random.nextFloat(),
+                    y = Random.nextFloat(),
+                    size = Random.nextFloat() * 4f + 2f,
+                    speed = Random.nextFloat() * 0.001f + 0.0005f,
+                    alpha = Random.nextFloat() * 0.4f + 0.1f
+                )
+            }
+        )
+    }
+
+    val infiniteTransition = rememberInfiniteTransition(label = "goldAura")
+    val time by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 100f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(10000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "goldTime"
+    )
+
+    LaunchedEffect(time) {
+        particles = particles.map { p ->
+            val newY = p.y - p.speed
+            val newX = p.x + sin((time + p.id * 10f) * 0.05f) * 0.001f
+            if (newY < -0.05f) {
+                p.copy(x = Random.nextFloat(), y = 1.05f)
+            } else {
+                p.copy(x = newX.coerceIn(0f, 1f), y = newY)
+            }
+        }
+    }
+
+    Canvas(modifier = modifier.fillMaxSize()) {
+        particles.forEach { p ->
+            // 외부 글로우
+            drawCircle(
+                color = Color(0xFFFFD700).copy(alpha = p.alpha * 0.3f),
+                radius = p.size * 2.5f,
+                center = Offset(p.x * size.width, p.y * size.height)
+            )
+            // 메인 파티클
+            drawCircle(
+                color = Color(0xFFFFD700).copy(alpha = p.alpha),
+                radius = p.size,
+                center = Offset(p.x * size.width, p.y * size.height)
+            )
         }
     }
 }

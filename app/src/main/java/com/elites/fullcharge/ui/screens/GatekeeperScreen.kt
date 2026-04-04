@@ -24,6 +24,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.elites.fullcharge.data.BatteryState
+import com.elites.fullcharge.data.EliteRank
 import com.elites.fullcharge.ui.components.BackgroundLightning
 import com.elites.fullcharge.ui.components.BatteryIndicator
 import com.elites.fullcharge.ui.components.ChargingProgressBar
@@ -37,11 +38,43 @@ fun GatekeeperScreen(
     batteryState: BatteryState,
     onlineUserCount: Int,
     onEnterPortal: () -> Unit,
+    restorableSessionDuration: Long? = null,
+    onRestoreWithAd: (Long) -> Unit = {},
+    onDismissRestore: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val isElite = batteryState.isElite  // 100% + 충전 중
     val isCharging = batteryState.isCharging
     val batteryLevel = batteryState.level
+
+    // 계급 복구 다이얼로그 표시 여부
+    var showRestoreDialog by remember { mutableStateOf(false) }
+
+    // 복구 가능한 세션이 있고, 입장 가능할 때 다이얼로그 자동 표시
+    LaunchedEffect(restorableSessionDuration, isElite) {
+        if (restorableSessionDuration != null && isElite) {
+            showRestoreDialog = true
+        }
+    }
+
+    // 계급 복구 다이얼로그
+    if (showRestoreDialog && restorableSessionDuration != null) {
+        RankRestoreDialog(
+            previousDuration = restorableSessionDuration,
+            onRestoreWithAd = {
+                showRestoreDialog = false
+                onRestoreWithAd(restorableSessionDuration)
+            },
+            onStartFresh = {
+                showRestoreDialog = false
+                onDismissRestore()
+                onEnterPortal()
+            },
+            onDismiss = {
+                showRestoreDialog = false
+            }
+        )
+    }
 
     Box(
         modifier = modifier
@@ -394,4 +427,119 @@ private fun UnworthyContent(
             )
         }
     }
+}
+
+/**
+ * 계급 복구 다이얼로그
+ */
+@Composable
+private fun RankRestoreDialog(
+    previousDuration: Long,
+    onRestoreWithAd: () -> Unit,
+    onStartFresh: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val previousRank = EliteRank.fromDuration(previousDuration)
+    val formattedDuration = EliteRank.fromDurationFormatted(previousDuration)
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = BackgroundWhite,
+        title = {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "🎖️",
+                    fontSize = 48.sp
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "이전 계급 복구",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 20.sp,
+                    color = TextPrimary
+                )
+            }
+        },
+        text = {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "이전 세션에서 달성한 계급이 있어요",
+                    fontSize = 14.sp,
+                    color = TextSecondary,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // 이전 계급 정보
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = TossBlue.copy(alpha = 0.1f)
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    ) {
+                        Text(
+                            text = previousRank.koreanName,
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TossBlue
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "접속 시간: $formattedDuration",
+                            fontSize = 14.sp,
+                            color = TextSecondary
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "광고를 시청하면 이전 계급으로\n바로 시작할 수 있어요",
+                    fontSize = 13.sp,
+                    color = TextTertiary,
+                    textAlign = TextAlign.Center,
+                    lineHeight = 18.sp
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onRestoreWithAd,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = TossBlue
+                ),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "광고 보고 계급 복구",
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onStartFresh,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "새로 시작하기",
+                    color = TextSecondary
+                )
+            }
+        }
+    )
 }

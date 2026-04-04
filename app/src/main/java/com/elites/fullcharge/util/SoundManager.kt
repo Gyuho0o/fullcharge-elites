@@ -57,14 +57,25 @@ class SoundManager(private val context: Context) {
     }
 
     /**
-     * 입장 효과음 (상승 톤)
+     * 입장 효과음 (전기/번개 느낌 - 빠른 연속 톤)
      */
     fun playEntrySound() {
         if (!soundEnabled) return
         try {
-            toneGenerator?.startTone(ToneGenerator.TONE_PROP_ACK, 150)
+            // 전기 스파크 느낌의 빠른 연속 톤
+            Thread {
+                try {
+                    toneGenerator?.startTone(ToneGenerator.TONE_CDMA_ALERT_NETWORK_LITE, 50)
+                    Thread.sleep(60)
+                    toneGenerator?.startTone(ToneGenerator.TONE_CDMA_ALERT_NETWORK_LITE, 30)
+                    Thread.sleep(40)
+                    toneGenerator?.startTone(ToneGenerator.TONE_CDMA_ALERT_NETWORK_LITE, 80)
+                    Thread.sleep(50)
+                    toneGenerator?.startTone(ToneGenerator.TONE_PROP_ACK, 150)
+                } catch (e: Exception) { }
+            }.start()
         } catch (e: Exception) { }
-        vibrateShort()
+        vibrateElectric()
     }
 
     /**
@@ -170,6 +181,23 @@ class SoundManager(private val context: Context) {
         if (!vibrationEnabled) return
         try {
             val pattern = longArrayOf(0, 50, 50, 50)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator.vibrate(VibrationEffect.createWaveform(pattern, -1))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(pattern, -1)
+            }
+        } catch (e: Exception) { }
+    }
+
+    /**
+     * 전기/번개 느낌의 진동 패턴
+     */
+    private fun vibrateElectric() {
+        if (!vibrationEnabled) return
+        try {
+            // 빠른 불규칙 패턴 (전기 스파크 느낌)
+            val pattern = longArrayOf(0, 20, 30, 15, 40, 25, 20, 50)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 vibrator.vibrate(VibrationEffect.createWaveform(pattern, -1))
             } else {

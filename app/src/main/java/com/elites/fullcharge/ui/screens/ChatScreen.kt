@@ -2,6 +2,7 @@ package com.elites.fullcharge.ui.screens
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -10,9 +11,11 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -33,6 +36,7 @@ import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.rotate
@@ -52,8 +56,11 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
+import com.elites.fullcharge.data.Achievement
 import com.elites.fullcharge.data.BatteryState
+import com.elites.fullcharge.data.ChatEvent
 import com.elites.fullcharge.data.ChatMessage
+import com.elites.fullcharge.data.ComboState
 import com.elites.fullcharge.data.EliteRank
 import com.elites.fullcharge.data.EliteUser
 import com.elites.fullcharge.data.ReportReason
@@ -93,12 +100,29 @@ fun ChatScreen(
     isInDanger: Boolean = false,
     dangerCountdown: Int = 0,
     bannerAdContent: @Composable () -> Unit = {},
+    // 업적 관련
+    newlyUnlockedAchievement: Achievement? = null,
+    onDismissAchievement: () -> Unit = {},
+    unlockedAchievements: Set<String> = emptySet(),
+    // 위기 탈출 관련
+    showCrisisEscapeCelebration: Boolean = false,
+    onDismissCrisisEscape: () -> Unit = {},
+    // 실시간 이벤트
+    latestChatEvent: ChatEvent? = null,
+    onDismissChatEvent: () -> Unit = {},
+    // 콤보 시스템
+    comboState: ComboState = ComboState(),
+    // 시간 기반 이벤트
+    personalHourMilestone: Int? = null,
+    isHourlyChime: Boolean = false,
+    isMidnightSpecial: Boolean = false,
+    onDismissTimeEvent: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var messageInput by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     var showLeaderboard by remember { mutableStateOf(false) }
-    var showPromotionCountdown by remember { mutableStateOf(true) }
+    var showPromotionCountdown by remember { mutableStateOf(false) }
     var showRankUpCelebration by remember { mutableStateOf(false) }
     var showNicknameDialog by remember { mutableStateOf(false) }
     var showReportDialog by remember { mutableStateOf(false) }
@@ -140,12 +164,31 @@ fun ChatScreen(
         }
     }
 
+    // 키보드 상태 감지
+    val density = LocalDensity.current
+    val imeBottom = WindowInsets.ime.getBottom(density)
+    val isKeyboardVisible = imeBottom > 0
+
     // 새 메시지가 오면 자동 스크롤
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {
             listState.animateScrollToItem(messages.size - 1)
         }
     }
+
+    // 키보드가 올라오면 최신 메시지로 스크롤
+    LaunchedEffect(isKeyboardVisible) {
+        if (isKeyboardVisible && messages.isNotEmpty()) {
+            // 약간의 딜레이 후 스크롤 (키보드 애니메이션 완료 대기)
+            delay(150)
+            listState.animateScrollToItem(messages.size - 1)
+        }
+    }
+
+    // 현재 사용자 계급 계산
+    val currentRankForEffects = EliteRank.fromDuration(sessionDuration)
+    val isHighRank = currentRankForEffects.ordinal >= EliteRank.SECOND_LIEUTENANT.ordinal
+    val isGeneral = currentRankForEffects.ordinal >= EliteRank.BRIGADIER_GENERAL.ordinal
 
     Box(
         modifier = modifier
@@ -155,8 +198,13 @@ fun ChatScreen(
         // 배경 파티클 효과 (더 많이)
         DenseBackgroundParticles()
 
-        // 배경 번개 (간헐적)
-        BackgroundLightning(enabled = true)
+        // 배경 번개 (간헐적) - 고계급일수록 더 자주
+        BackgroundLightning(enabled = true, intensityLevel = if (isGeneral) 3 else if (isHighRank) 2 else 1)
+
+        // 장성급 전용 골드 파티클
+        if (isGeneral) {
+            GoldAuraParticles()
+        }
 
         // 메시지 전송 시 번개 효과
         MessageSendLightning(trigger = messageSentTrigger)
@@ -220,7 +268,7 @@ fun ChatScreen(
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .windowInsetsPadding(WindowInsets.ime)
+                    .imePadding()
             ) {
                 // 채팅 메시지 목록
                 LazyColumn(
@@ -235,7 +283,12 @@ fun ChatScreen(
                     items(messages, key = { it.id }) { message ->
                         when {
                             message.isSystemMessage -> {
-                                SystemMessageItem(message = message)
+                                SystemMessageItem(
+                                    message = message,
+                                    onWelcomeTap = { welcomeMessage ->
+                                        onSendMessage(welcomeMessage)
+                                    }
+                                )
                             }
                             message.isPoll -> {
                                 PollMessageItem(
@@ -304,6 +357,46 @@ fun ChatScreen(
             visible = showRankUpCelebration,
             onDismiss = { showRankUpCelebration = false },
             bannerAdView = bannerAdContent
+        )
+
+        // 업적 달성 팝업
+        AchievementUnlockedPopup(
+            achievement = newlyUnlockedAchievement,
+            onDismiss = onDismissAchievement
+        )
+
+        // 위기 탈출 축하 이펙트
+        CrisisEscapeCelebration(
+            visible = showCrisisEscapeCelebration,
+            onDismiss = onDismissCrisisEscape
+        )
+
+        // 실시간 이벤트 알림 배너
+        ChatEventBanner(
+            event = latestChatEvent,
+            onDismiss = onDismissChatEvent
+        )
+
+        // 콤보 이펙트
+        ComboEffectOverlay(
+            comboState = comboState
+        )
+
+        // 자정 특별 이벤트
+        MidnightSpecialOverlay(
+            visible = isMidnightSpecial,
+            onDismiss = onDismissTimeEvent
+        )
+
+        // 정각 알림
+        HourlyChimeOverlay(
+            visible = isHourlyChime
+        )
+
+        // 개인 시간 마일스톤
+        PersonalMilestoneOverlay(
+            hours = personalHourMilestone,
+            onDismiss = onDismissTimeEvent
         )
 
         // 닉네임 수정 다이얼로그
@@ -703,6 +796,125 @@ private fun ChatTopBar(
     }
 }
 
+/**
+ * 봇 메시지 아이템 (완충이)
+ */
+@Composable
+private fun BotMessageItem(message: ChatMessage) {
+    val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+    val timeString = timeFormat.format(Date(message.timestamp))
+
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        visible = true
+    }
+
+    // 반짝이 애니메이션
+    val infiniteTransition = rememberInfiniteTransition(label = "botSparkle")
+    val sparkleAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.4f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "sparkle"
+    )
+
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(200)) + slideInHorizontally(initialOffsetX = { -it })
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.Start
+        ) {
+            // 봇 닉네임 + 배지
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(bottom = 4.dp)
+            ) {
+                // 봇 전용 배지 (보라색 그라데이션 + 번개)
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(
+                            Brush.horizontalGradient(
+                                colors = listOf(
+                                    Color(0xFF7C3AED),
+                                    Color(0xFF8B5CF6),
+                                    Color(0xFFA78BFA)
+                                )
+                            )
+                        )
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "⚡",
+                            fontSize = 10.sp
+                        )
+                        Spacer(modifier = Modifier.width(2.dp))
+                        Text(
+                            text = "BOT",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = message.nickname,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF7C3AED)
+                )
+                // 반짝이 효과
+                Text(
+                    text = " ✨",
+                    fontSize = 10.sp,
+                    modifier = Modifier.alpha(sparkleAlpha)
+                )
+            }
+
+            // 말풍선 + 시간
+            Row(
+                verticalAlignment = Alignment.Bottom
+            ) {
+                // 봇 말풍선 (보라색 계열)
+                Surface(
+                    shape = RoundedCornerShape(
+                        topStart = 4.dp,
+                        topEnd = 16.dp,
+                        bottomStart = 16.dp,
+                        bottomEnd = 16.dp
+                    ),
+                    color = Color(0xFF7C3AED),
+                    shadowElevation = 2.dp,
+                    modifier = Modifier.widthIn(max = 280.dp)
+                ) {
+                    Text(
+                        text = message.message,
+                        fontSize = 14.sp,
+                        color = Color.White,
+                        lineHeight = 20.sp,
+                        modifier = Modifier.padding(12.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(4.dp))
+
+                Text(
+                    text = timeString,
+                    fontSize = 10.sp,
+                    color = TextTertiary
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun RankBadge(rank: EliteRank) {
     val badgeColors = when (rank) {
@@ -724,12 +936,13 @@ private fun RankBadge(rank: EliteRank) {
         EliteRank.MASTER_SERGEANT -> listOf(Color(0xFF1D4ED8), Color(0xFF60A5FA))
         EliteRank.SERGEANT_FIRST -> listOf(Color(0xFF2563EB), Color(0xFF93C5FD))
         EliteRank.STAFF_SERGEANT -> listOf(Color(0xFF3B82F6), Color(0xFFBFDBFE))
-        // 병사 (회색 계열)
-        EliteRank.SERGEANT -> listOf(Color(0xFF475569), Color(0xFF64748B))
-        EliteRank.CORPORAL -> listOf(Color(0xFF64748B), Color(0xFF94A3B8))
-        EliteRank.PRIVATE_FIRST -> listOf(Color(0xFF6B7280), Color(0xFF9CA3AF))
-        EliteRank.PRIVATE_SECOND -> listOf(Color(0xFF9CA3AF), Color(0xFFD1D5DB))
-        else -> listOf(Color(0xFFD1D5DB), Color(0xFFE5E7EB))
+        // 병사 (블루그레이 계열 - 깔끔한 그라데이션)
+        EliteRank.SERGEANT -> listOf(Color(0xFF37474F), Color(0xFF546E7A))       // 병장
+        EliteRank.CORPORAL -> listOf(Color(0xFF455A64), Color(0xFF607D8B))       // 상병
+        EliteRank.PRIVATE_FIRST -> listOf(Color(0xFF546E7A), Color(0xFF78909C))  // 일병
+        EliteRank.PRIVATE_SECOND -> listOf(Color(0xFF607D8B), Color(0xFF90A4AE)) // 이병
+        // 훈련병 (연한 블루그레이)
+        else -> listOf(Color(0xFF78909C), Color(0xFFB0BEC5))
     }
 
     Box(
@@ -812,19 +1025,56 @@ private fun ChatMessageItem(
             modifier = Modifier.fillMaxWidth(),
             horizontalAlignment = if (isOwnMessage) Alignment.End else Alignment.Start
         ) {
-            // 닉네임 (다른 사람 메시지)
-            if (!isOwnMessage) {
+            // 닉네임 + 계급 (모든 메시지에 표시)
+            // 고계급(장성) 스파클 효과 포함
+            val isGeneral = messageRank.ordinal >= EliteRank.BRIGADIER_GENERAL.ordinal
+            val isOfficer = messageRank.ordinal >= EliteRank.SECOND_LIEUTENANT.ordinal
+
+            Box {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(bottom = 4.dp)
+                    modifier = Modifier.padding(bottom = 4.dp),
+                    horizontalArrangement = if (isOwnMessage) Arrangement.End else Arrangement.Start
                 ) {
+                    // 장성급 앞에 별 아이콘
+                    if (isGeneral) {
+                        Text(
+                            text = "⭐",
+                            fontSize = 10.sp,
+                            modifier = Modifier.padding(end = 2.dp)
+                        )
+                    }
                     RankBadge(rank = messageRank)
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = message.nickname,
+                        text = if (isOwnMessage) "${message.nickname} (나)" else message.nickname,
                         fontSize = 12.sp,
-                        color = TextSecondary
+                        color = if (isOwnMessage) TossBlue else TextSecondary,
+                        // 장성급은 골드 글로우 효과
+                        style = if (isGeneral) {
+                            androidx.compose.ui.text.TextStyle(
+                                shadow = androidx.compose.ui.graphics.Shadow(
+                                    color = Color(0xFFFFD700).copy(alpha = glowAlpha),
+                                    offset = Offset(0f, 0f),
+                                    blurRadius = 8f
+                                )
+                            )
+                        } else {
+                            androidx.compose.ui.text.TextStyle.Default
+                        }
                     )
+                    // 영관급 이상은 번개 아이콘
+                    if (isOfficer && !isGeneral) {
+                        Text(
+                            text = "⚡",
+                            fontSize = 10.sp,
+                            modifier = Modifier.padding(start = 2.dp)
+                        )
+                    }
+                }
+                // 장성급 스파클 파티클 (작은 크기로)
+                if (isGeneral) {
+                    HighRankSparkles(shimmerOffset)
                 }
             }
 
@@ -875,19 +1125,17 @@ private fun ChatMessageItem(
                     EliteRank.MASTER_SERGEANT -> Color(0xFF1D4ED8)
                     EliteRank.SERGEANT_FIRST -> Color(0xFF2563EB)
                     EliteRank.STAFF_SERGEANT -> Color(0xFF3B82F6)
-                    // 병사 (회색~청색 계열)
-                    EliteRank.SERGEANT -> Color(0xFF475569)
-                    EliteRank.CORPORAL -> Color(0xFF64748B)
-                    EliteRank.PRIVATE_FIRST -> Color(0xFF6B7280)
-                    EliteRank.PRIVATE_SECOND -> Color(0xFF9CA3AF)
-                    else -> if (isOwnMessage) Color(0xFFD1D5DB) else ChatBubbleOther
+                    // 병사 (블루그레이 계열 - 깔끔한 색상)
+                    EliteRank.SERGEANT -> Color(0xFF455A64)      // 병장: 진한 블루그레이
+                    EliteRank.CORPORAL -> Color(0xFF546E7A)      // 상병: 블루그레이
+                    EliteRank.PRIVATE_FIRST -> Color(0xFF607D8B) // 일병: 미디엄 블루그레이
+                    EliteRank.PRIVATE_SECOND -> Color(0xFF78909C) // 이병: 라이트 블루그레이
+                    // 훈련병 (연한 블루그레이)
+                    EliteRank.TRAINEE -> Color(0xFF90A4AE)
                 }
 
-                val textColor = when {
-                    messageRank.ordinal >= EliteRank.PRIVATE_SECOND.ordinal -> Color.White
-                    isOwnMessage -> Color.White
-                    else -> TextPrimary
-                }
+                // 모든 계급은 흰색 텍스트 (색상이 있는 버블이므로)
+                val textColor = Color.White
 
                 // 등급별 버블 모디파이어
                 val bubbleShape = RoundedCornerShape(
@@ -1184,12 +1432,41 @@ private fun ChatMessageItem(
 
 @Composable
 private fun SystemMessageItem(
-    message: ChatMessage
+    message: ChatMessage,
+    onWelcomeTap: ((String) -> Unit)? = null  // 환영 메시지 전송 콜백
 ) {
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         visible = true
     }
+
+    // 메시지 타입에 따른 스타일 결정
+    val messageText = message.message
+    val isEntryMessage = messageText.contains("합류했습니다")
+
+    val (icon, bgColor, textColor, borderColor) = when {
+        isEntryMessage -> {
+            // 입장 - 흰 배경 + 초록 테두리 + 진한 텍스트
+            listOf("👋", Color.White, TextPrimary, StatusGreen)
+        }
+        messageText.contains("복귀했습니다") -> {
+            // 복귀 - 흰 배경 + 파란 테두리 + 진한 텍스트
+            listOf("⚡", Color.White, TextPrimary, TossBlue)
+        }
+        messageText.contains("퇴장했습니다") || messageText.contains("추방되었습니다") -> {
+            // 퇴장 - 흰 배경 + 회색 테두리 + 연한 텍스트
+            listOf("👋", Color.White, TextTertiary, DividerGray)
+        }
+        else -> {
+            // 기타 시스템 메시지
+            listOf("📢", Color.White, TextSecondary, DividerGray)
+        }
+    }
+
+    // 닉네임 추출 (입장 메시지에서)
+    val nickname = if (isEntryMessage) {
+        messageText.replace("님이 전우회에 합류했습니다", "").trim()
+    } else null
 
     AnimatedVisibility(
         visible = visible,
@@ -1201,18 +1478,40 @@ private fun SystemMessageItem(
                 .padding(vertical = 8.dp),
             contentAlignment = Alignment.Center
         ) {
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(StatusRed.copy(alpha = 0.15f))
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = bgColor as Color,
+                border = BorderStroke(1.dp, borderColor as Color),
+                shadowElevation = 1.dp,
+                modifier = if (isEntryMessage && onWelcomeTap != null && nickname != null) {
+                    Modifier.clickable { onWelcomeTap("환영한다 전우여, $nickname!") }
+                } else Modifier
             ) {
-                Text(
-                    text = message.message,
-                    fontSize = 13.sp,
-                    color = StatusRed,
-                    fontWeight = FontWeight.Medium
-                )
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = icon as String,
+                        fontSize = 14.sp
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = messageText,
+                        fontSize = 13.sp,
+                        color = textColor as Color,
+                        fontWeight = FontWeight.Medium
+                    )
+                    // 입장 메시지에 터치 힌트 추가
+                    if (isEntryMessage && onWelcomeTap != null) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "👆",
+                            fontSize = 12.sp,
+                            modifier = Modifier.alpha(0.6f)
+                        )
+                    }
+                }
             }
         }
     }
@@ -1360,6 +1659,16 @@ private fun RankUpCelebration(
     onDismiss: () -> Unit,
     bannerAdView: @Composable () -> Unit = {}
 ) {
+    // 자동 닫힘 카운트다운
+    var countdown by remember { mutableIntStateOf(5) }
+
+    // visible이 true가 될 때 카운트다운 리셋
+    LaunchedEffect(visible) {
+        if (visible) {
+            countdown = 5
+        }
+    }
+
     AnimatedVisibility(
         visible = visible,
         enter = fadeIn() + scaleIn(initialScale = 0.8f),
@@ -1377,19 +1686,31 @@ private fun RankUpCelebration(
             // 모달 카드
             Box(
                 modifier = Modifier
-                    .padding(horizontal = 32.dp)
+                    .padding(horizontal = 24.dp)
                     .clip(RoundedCornerShape(20.dp))
                     .background(Color.White)
             ) {
                 Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.padding(24.dp)
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    // X 버튼 (우측 상단)
-                    Box(
-                        modifier = Modifier.fillMaxWidth(),
-                        contentAlignment = Alignment.TopEnd
+                    // 상단 콘텐츠 영역 (패딩 적용)
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(24.dp)
                     ) {
+                    // X 버튼 + 카운트다운 (우측 상단)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // 남은 시간 표시
+                        Text(
+                            text = "${countdown}초",
+                            fontSize = 12.sp,
+                            color = TextTertiary
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
                         IconButton(
                             onClick = onDismiss,
                             modifier = Modifier.size(32.dp)
@@ -1436,19 +1757,28 @@ private fun RankUpCelebration(
                         fontSize = 14.sp,
                         color = TextSecondary
                     )
+                    }
 
-                    Spacer(modifier = Modifier.height(20.dp))
-
-                    // 배너 광고 영역
-                    bannerAdView()
+                    // 배너 광고 영역 (패딩 없이 전체 너비 사용)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        bannerAdView()
+                    }
                 }
             }
         }
 
-        // 5초 후 자동 닫힘
+        // 5초 후 자동 닫힘 (1초마다 카운트다운 업데이트)
         LaunchedEffect(visible) {
             if (visible) {
-                delay(5000)
+                repeat(5) {
+                    delay(1000)
+                    countdown--
+                }
                 onDismiss()
             }
         }
@@ -2172,4 +2502,971 @@ private fun LeaveConfirmDialog(
             }
         }
     )
+}
+
+/**
+ * 업적 달성 팝업
+ */
+@Composable
+private fun AchievementUnlockedPopup(
+    achievement: Achievement?,
+    onDismiss: () -> Unit
+) {
+    AnimatedVisibility(
+        visible = achievement != null,
+        enter = fadeIn() + slideInVertically(initialOffsetY = { -it }),
+        exit = fadeOut() + slideOutVertically(targetOffsetY = { -it })
+    ) {
+        achievement?.let { ach ->
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+                    .padding(top = 48.dp),
+                contentAlignment = Alignment.TopCenter
+            ) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onDismiss() },
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color.White
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // 이모지
+                        Text(
+                            text = ach.emoji,
+                            fontSize = 40.sp
+                        )
+
+                        Spacer(modifier = Modifier.width(16.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "업적 달성!",
+                                fontSize = 12.sp,
+                                color = TossBlue,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                text = ach.title,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary
+                            )
+                            Text(
+                                text = ach.description,
+                                fontSize = 13.sp,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 3초 후 자동 닫힘
+            LaunchedEffect(ach) {
+                delay(3000)
+                onDismiss()
+            }
+        }
+    }
+}
+
+/**
+ * 위기 탈출 축하 이펙트
+ */
+@Composable
+private fun CrisisEscapeCelebration(
+    visible: Boolean,
+    onDismiss: () -> Unit
+) {
+    // 펄스 애니메이션
+    val infiniteTransition = rememberInfiniteTransition(label = "escape")
+    val scale by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(300),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "scale"
+    )
+
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn() + scaleIn(initialScale = 0.5f),
+        exit = fadeOut() + scaleOut(targetScale = 0.5f)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(StatusGreen.copy(alpha = 0.3f))
+                .clickable { onDismiss() },
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(Color.White)
+                    .padding(32.dp)
+            ) {
+                // 땀방울 이모지 (크게)
+                Text(
+                    text = "😅",
+                    fontSize = (64 * scale).sp
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    text = "휴... 살았다!",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = StatusGreen
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = "위기를 탈출했어요",
+                    fontSize = 14.sp,
+                    color = TextSecondary
+                )
+            }
+        }
+
+        // 2초 후 자동 닫힘
+        LaunchedEffect(visible) {
+            if (visible) {
+                delay(2000)
+                onDismiss()
+            }
+        }
+    }
+}
+
+/**
+ * 실시간 이벤트 알림 배너
+ */
+@Composable
+private fun ChatEventBanner(
+    event: ChatEvent?,
+    onDismiss: () -> Unit
+) {
+    AnimatedVisibility(
+        visible = event != null,
+        enter = fadeIn() + slideInVertically(initialOffsetY = { -it }),
+        exit = fadeOut() + slideOutVertically(targetOffsetY = { -it })
+    ) {
+        event?.let { chatEvent ->
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .padding(top = 100.dp)
+                    .clickable { onDismiss() },
+                contentAlignment = Alignment.TopCenter
+            ) {
+                when (chatEvent) {
+                    // 승급 알림 - UI로 구현
+                    is ChatEvent.UserRankUp -> {
+                        RankUpEventBanner(
+                            nickname = chatEvent.nickname,
+                            newRank = chatEvent.newRank
+                        )
+                    }
+                    // 위기 탈출 - UI로 구현
+                    is ChatEvent.UserCrisisEscape -> {
+                        CrisisEscapeEventBanner(nickname = chatEvent.nickname)
+                    }
+                    // 기타 이벤트
+                    else -> {
+                        val (icon, message, bgColor) = when (chatEvent) {
+                            is ChatEvent.UserJoined -> Triple(
+                                "👋",
+                                "${chatEvent.nickname}님이 입장했어요!",
+                                TossBlue.copy(alpha = 0.8f)
+                            )
+                            is ChatEvent.ComboAchieved -> Triple(
+                                "🔥",
+                                "${chatEvent.count}콤보 달성!",
+                                Color(0xFFFF6B35).copy(alpha = 0.9f)
+                            )
+                            is ChatEvent.PersonalHourMilestone -> Triple(
+                                "⏰",
+                                "${chatEvent.hours}시간 생존 달성!",
+                                Color(0xFF6366F1).copy(alpha = 0.9f)
+                            )
+                            ChatEvent.HourlyChime -> Triple(
+                                "🔔",
+                                "정각입니다!",
+                                Color(0xFF8B5CF6).copy(alpha = 0.9f)
+                            )
+                            ChatEvent.MidnightSpecial -> Triple(
+                                "🌙",
+                                "자정이에요! 심야 전우회 화이팅!",
+                                Color(0xFF1E1B4B).copy(alpha = 0.95f)
+                            )
+                            is ChatEvent.MessageMilestone -> Triple(
+                                "💬",
+                                "채팅방 ${chatEvent.count}번째 메시지 달성!",
+                                TossBlue.copy(alpha = 0.9f)
+                            )
+                            is ChatEvent.UserCountMilestone -> Triple(
+                                "👥",
+                                "동시 접속자 ${chatEvent.count}명 달성!",
+                                StatusGreen.copy(alpha = 0.9f)
+                            )
+                            is ChatEvent.NewSurvivalRecord -> Triple(
+                                "🏆",
+                                "${chatEvent.nickname}님이 새로운 생존 기록 달성!",
+                                Color(0xFFD97706).copy(alpha = 0.9f)
+                            )
+                            else -> Triple("", "", Color.Transparent)
+                        }
+
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            color = bgColor,
+                            shadowElevation = 8.dp
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = icon,
+                                    fontSize = 28.sp
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text(
+                                    text = message,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = Color.White
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 승급 이벤트 배너 (UI로 구현)
+ */
+@Composable
+private fun RankUpEventBanner(
+    nickname: String,
+    newRank: EliteRank
+) {
+    // 계급에 따른 배경 그라데이션
+    val bgGradient = when {
+        newRank.ordinal >= EliteRank.BRIGADIER_GENERAL.ordinal -> {
+            // 장성급: 골드 그라데이션
+            Brush.horizontalGradient(
+                colors = listOf(
+                    Color(0xFF78350F),
+                    Color(0xFFD97706),
+                    Color(0xFFFBBF24),
+                    Color(0xFFD97706),
+                    Color(0xFF78350F)
+                )
+            )
+        }
+        newRank.ordinal >= EliteRank.MAJOR.ordinal -> {
+            // 영관급: 보라색 그라데이션
+            Brush.horizontalGradient(
+                colors = listOf(
+                    Color(0xFF581C87),
+                    Color(0xFF7C3AED),
+                    Color(0xFF581C87)
+                )
+            )
+        }
+        newRank.ordinal >= EliteRank.SECOND_LIEUTENANT.ordinal -> {
+            // 위관급: 초록색 그라데이션
+            Brush.horizontalGradient(
+                colors = listOf(
+                    Color(0xFF047857),
+                    Color(0xFF10B981),
+                    Color(0xFF047857)
+                )
+            )
+        }
+        newRank.ordinal >= EliteRank.STAFF_SERGEANT.ordinal -> {
+            // 부사관: 파란색 그라데이션
+            Brush.horizontalGradient(
+                colors = listOf(
+                    Color(0xFF1E40AF),
+                    Color(0xFF3B82F6),
+                    Color(0xFF1E40AF)
+                )
+            )
+        }
+        else -> {
+            // 병사: 회색 그라데이션
+            Brush.horizontalGradient(
+                colors = listOf(
+                    Color(0xFF475569),
+                    Color(0xFF64748B),
+                    Color(0xFF475569)
+                )
+            )
+        }
+    }
+
+    // 별 개수 (장성급)
+    val starCount = when (newRank) {
+        EliteRank.GENERAL -> 4
+        EliteRank.LIEUTENANT_GENERAL -> 3
+        EliteRank.MAJOR_GENERAL -> 2
+        EliteRank.BRIGADIER_GENERAL -> 1
+        else -> 0
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        shadowElevation = 8.dp
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(bgGradient)
+                .padding(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // 계급장 영역
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color.White.copy(alpha = 0.2f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (starCount > 0) {
+                        // 장성급: 별 표시
+                        Row {
+                            repeat(starCount.coerceAtMost(2)) {
+                                Text(
+                                    text = "★",
+                                    fontSize = 16.sp,
+                                    color = Color(0xFFFFD700),
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                        if (starCount > 2) {
+                            Column {
+                                Row {
+                                    repeat(2) {
+                                        Text(
+                                            text = "★",
+                                            fontSize = 14.sp,
+                                            color = Color(0xFFFFD700),
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                                Row {
+                                    repeat(starCount - 2) {
+                                        Text(
+                                            text = "★",
+                                            fontSize = 14.sp,
+                                            color = Color(0xFFFFD700),
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        // 일반 계급: 계급장 아이콘
+                        Text(
+                            text = "▲",
+                            fontSize = 24.sp,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "승급!",
+                        fontSize = 12.sp,
+                        color = Color.White.copy(alpha = 0.8f)
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = nickname,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        Text(
+                            text = " → ",
+                            fontSize = 14.sp,
+                            color = Color.White.copy(alpha = 0.8f)
+                        )
+                        // 계급 배지
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(Color.White.copy(alpha = 0.2f))
+                                .padding(horizontal = 8.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = newRank.koreanName,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
+                    }
+                }
+
+                // 화살표 아이콘 (상승 표시)
+                Text(
+                    text = "↑",
+                    fontSize = 28.sp,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 위기 탈출 이벤트 배너 (UI로 구현)
+ */
+@Composable
+private fun CrisisEscapeEventBanner(
+    nickname: String
+) {
+    // 펄스 애니메이션
+    val infiniteTransition = rememberInfiniteTransition(label = "escapeBanner")
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.7f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(500),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulse"
+    )
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        shadowElevation = 8.dp
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.horizontalGradient(
+                        colors = listOf(
+                            StatusGreen.copy(alpha = pulseAlpha),
+                            StatusGreen.copy(alpha = 0.8f),
+                            StatusGreen.copy(alpha = pulseAlpha)
+                        )
+                    )
+                )
+                .padding(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // 하트 아이콘 (생존 표시)
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.2f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "♥",
+                        fontSize = 28.sp,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "위기 탈출!",
+                        fontSize = 12.sp,
+                        color = Color.White.copy(alpha = 0.8f)
+                    )
+                    Text(
+                        text = "${nickname}님이 살아남았어요!",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+
+                // 체크 아이콘
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.3f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "✓",
+                        fontSize = 20.sp,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 콤보 이펙트 오버레이
+ */
+@Composable
+private fun ComboEffectOverlay(
+    comboState: ComboState
+) {
+    // 콤보 표시 애니메이션
+    val scale by animateFloatAsState(
+        targetValue = if (comboState.showComboEffect) 1.2f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "comboScale"
+    )
+
+    AnimatedVisibility(
+        visible = comboState.showComboEffect,
+        enter = fadeIn() + scaleIn(initialScale = 0.3f),
+        exit = fadeOut() + scaleOut(targetScale = 1.5f),
+        modifier = Modifier.fillMaxSize()
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            // 불꽃 파티클 효과
+            ComboFireParticles()
+
+            // 콤보 숫자
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "🔥",
+                    fontSize = (48 * scale).sp
+                )
+                Text(
+                    text = "${comboState.currentCombo}",
+                    fontSize = (64 * scale).sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFFF6B35),
+                    style = androidx.compose.ui.text.TextStyle(
+                        shadow = androidx.compose.ui.graphics.Shadow(
+                            color = Color(0xFFFF6B35).copy(alpha = 0.6f),
+                            offset = Offset(0f, 0f),
+                            blurRadius = 20f
+                        )
+                    )
+                )
+                Text(
+                    text = "COMBO!",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFFF6B35)
+                )
+            }
+        }
+    }
+
+    // 콤보 카운터 (항상 표시, 3 이상일 때)
+    AnimatedVisibility(
+        visible = comboState.currentCombo >= 3 && !comboState.showComboEffect,
+        enter = fadeIn() + slideInVertically(),
+        exit = fadeOut()
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(end = 16.dp, bottom = 120.dp),
+            contentAlignment = Alignment.BottomEnd
+        ) {
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = Color(0xFFFF6B35).copy(alpha = 0.9f),
+                shadowElevation = 4.dp
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(text = "🔥", fontSize = 16.sp)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "${comboState.currentCombo}",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 콤보 불꽃 파티클
+ */
+@Composable
+private fun ComboFireParticles() {
+    data class FireParticle(
+        val id: Int,
+        var x: Float,
+        var y: Float,
+        var vx: Float,
+        var vy: Float,
+        val size: Float,
+        val color: Color
+    )
+
+    val fireColors = listOf(
+        Color(0xFFFF6B35),
+        Color(0xFFFF8C00),
+        Color(0xFFFFD700),
+        Color(0xFFFF4500)
+    )
+
+    var particles by remember {
+        mutableStateOf(
+            List(30) { index ->
+                FireParticle(
+                    id = index,
+                    x = 0.5f,
+                    y = 0.5f,
+                    vx = (Random.nextFloat() - 0.5f) * 0.03f,
+                    vy = -Random.nextFloat() * 0.02f - 0.01f,
+                    size = Random.nextFloat() * 15f + 5f,
+                    color = fireColors.random()
+                )
+            }
+        )
+    }
+
+    val infiniteTransition = rememberInfiniteTransition(label = "fire")
+    val time by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(50, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "fireTime"
+    )
+
+    LaunchedEffect(time) {
+        particles = particles.map { p ->
+            p.copy(
+                x = p.x + p.vx,
+                y = p.y + p.vy
+            )
+        }
+    }
+
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        particles.forEach { p ->
+            if (p.x in 0f..1f && p.y in 0f..1f) {
+                drawCircle(
+                    color = p.color.copy(alpha = 0.7f),
+                    radius = p.size,
+                    center = Offset(p.x * size.width, p.y * size.height)
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 자정 특별 이벤트 오버레이
+ */
+@Composable
+private fun MidnightSpecialOverlay(
+    visible: Boolean,
+    onDismiss: () -> Unit
+) {
+    // 별 반짝임 애니메이션
+    val infiniteTransition = rememberInfiniteTransition(label = "midnight")
+    val starAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(500),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "starAlpha"
+    )
+
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(animationSpec = tween(1000)),
+        exit = fadeOut(animationSpec = tween(1000))
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color(0xFF0F0D24).copy(alpha = 0.95f),
+                            Color(0xFF1E1B4B).copy(alpha = 0.9f)
+                        )
+                    )
+                )
+                .clickable { onDismiss() },
+            contentAlignment = Alignment.Center
+        ) {
+            // 별 파티클
+            MidnightStars(alpha = starAlpha)
+
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(Color(0xFF1E1B4B).copy(alpha = 0.8f))
+                    .padding(32.dp)
+            ) {
+                Text(
+                    text = "🌙✨",
+                    fontSize = 56.sp
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "자정이에요!",
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFFDE68A)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "심야 전우회 화이팅!",
+                    fontSize = 16.sp,
+                    color = Color.White.copy(alpha = 0.9f)
+                )
+            }
+        }
+
+        LaunchedEffect(visible) {
+            if (visible) {
+                delay(5000)
+                onDismiss()
+            }
+        }
+    }
+}
+
+/**
+ * 자정 별 파티클
+ */
+@Composable
+private fun MidnightStars(alpha: Float) {
+    data class Star(
+        val x: Float,
+        val y: Float,
+        val size: Float,
+        val twinkleOffset: Float
+    )
+
+    val stars = remember {
+        List(50) {
+            Star(
+                x = Random.nextFloat(),
+                y = Random.nextFloat(),
+                size = Random.nextFloat() * 3f + 1f,
+                twinkleOffset = Random.nextFloat()
+            )
+        }
+    }
+
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        stars.forEach { star ->
+            val starAlpha = ((sin((alpha * 2 * Math.PI + star.twinkleOffset * Math.PI).toFloat()) + 1) / 2) * 0.8f + 0.2f
+            drawCircle(
+                color = Color.White.copy(alpha = starAlpha),
+                radius = star.size,
+                center = Offset(star.x * size.width, star.y * size.height)
+            )
+        }
+    }
+}
+
+/**
+ * 정각 알림 오버레이
+ */
+@Composable
+private fun HourlyChimeOverlay(
+    visible: Boolean
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "chime")
+    val bellScale by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.2f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(200),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "bellScale"
+    )
+
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn() + scaleIn(initialScale = 0.5f),
+        exit = fadeOut() + scaleOut(targetScale = 0.5f)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 150.dp),
+            contentAlignment = Alignment.TopCenter
+        ) {
+            Text(
+                text = "🔔",
+                fontSize = (48 * bellScale).sp
+            )
+        }
+    }
+}
+
+/**
+ * 고계급 스파클 효과 (장성급 닉네임 주변)
+ */
+@Composable
+private fun HighRankSparkles(animationProgress: Float) {
+    val sparkles = remember {
+        List(8) { index ->
+            val angle = (index * 45f) * (Math.PI / 180f).toFloat()
+            Triple(
+                cos(angle) * 0.5f + 0.5f,  // x (0~1 범위)
+                sin(angle) * 0.5f + 0.5f,  // y (0~1 범위)
+                Random.nextFloat() * 0.5f + 0.3f  // 크기 변동
+            )
+        }
+    }
+
+    Canvas(
+        modifier = Modifier
+            .size(width = 120.dp, height = 24.dp)
+    ) {
+        sparkles.forEachIndexed { index, (baseX, baseY, sizeFactor) ->
+            // 애니메이션으로 위치 약간 변동
+            val offsetPhase = (animationProgress + index * 0.125f) % 1f
+            val alpha = (sin(offsetPhase * 2 * Math.PI.toFloat()) + 1) / 2 * 0.8f
+
+            drawCircle(
+                color = Color(0xFFFFD700).copy(alpha = alpha),
+                radius = 2f * sizeFactor,
+                center = Offset(
+                    baseX * size.width,
+                    baseY * size.height
+                )
+            )
+        }
+    }
+}
+
+/**
+ * 개인 시간 마일스톤 오버레이
+ */
+@Composable
+private fun PersonalMilestoneOverlay(
+    hours: Int?,
+    onDismiss: () -> Unit
+) {
+    val scale by animateFloatAsState(
+        targetValue = if (hours != null) 1.1f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy
+        ),
+        label = "milestoneScale"
+    )
+
+    AnimatedVisibility(
+        visible = hours != null,
+        enter = fadeIn() + scaleIn(initialScale = 0.5f),
+        exit = fadeOut() + scaleOut(targetScale = 1.2f)
+    ) {
+        hours?.let { h ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xFF6366F1).copy(alpha = 0.3f))
+                    .clickable { onDismiss() },
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(Color.White)
+                        .padding(32.dp)
+                ) {
+                    Text(
+                        text = "⏰",
+                        fontSize = (56 * scale).sp
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "${h}시간 생존!",
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF6366F1)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "대단해요! 계속 버텨주세요!",
+                        fontSize = 14.sp,
+                        color = TextSecondary
+                    )
+                }
+            }
+
+            LaunchedEffect(h) {
+                delay(3000)
+                onDismiss()
+            }
+        }
+    }
 }

@@ -49,6 +49,12 @@ fun 진급카운트다운(
 
     val 다음계급까지남은시간 = (다음계급.minMinutes * 60 * 1000) - 현재시간
     val 남은시간포맷 = 시간포맷(다음계급까지남은시간)
+    val 승급임박 = 승급임박여부(다음계급까지남은시간)
+
+    // 승급 임박 시 색상 변경 (10초 이하)
+    val 메인색상 = if (승급임박) StatusGreen else TossBlue
+    val 메인색상Dark = if (승급임박) Color(0xFF15803D) else TossBlueDark
+    val 메인색상Light = if (승급임박) Color(0xFF4ADE80) else TossBlueLight
 
     // 진행률 계산
     val 현재계급시작 = 현재계급.minMinutes * 60 * 1000
@@ -84,41 +90,67 @@ fun 진급카운트다운(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(TossBlue.copy(alpha = 0.08f))
+            .background(메인색상.copy(alpha = 0.08f))
     ) {
         // 헤더 (항상 표시, 클릭하면 토글)
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable { onToggle() }
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+                .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
             Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "승급",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = TextPrimary
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "${다음계급.koreanName}까지 $남은시간포맷",
-                    fontSize = 13.sp,
-                    color = TossBlue
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (승급임박) "곧 승급!" else "승급",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = if (승급임박) 메인색상 else TextPrimary
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "${다음계급.koreanName}까지 $남은시간포맷",
+                        fontSize = 13.sp,
+                        color = 메인색상
+                    )
+                }
+                Icon(
+                    imageVector = Icons.Default.KeyboardArrowDown,
+                    contentDescription = if (isExpanded) "접기" else "펼치기",
+                    tint = TextSecondary,
+                    modifier = Modifier
+                        .size(20.dp)
+                        .rotate(arrowRotation)
                 )
             }
-            Icon(
-                imageVector = Icons.Default.KeyboardArrowDown,
-                contentDescription = if (isExpanded) "접기" else "펼치기",
-                tint = TextSecondary,
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // 진행 바 (항상 표시)
+            Box(
                 modifier = Modifier
-                    .size(20.dp)
-                    .rotate(arrowRotation)
-            )
+                    .fillMaxWidth()
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(메인색상.copy(alpha = 0.2f))
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth(animatedProgress)
+                        .background(
+                            Brush.horizontalGradient(
+                                colors = listOf(메인색상Dark, 메인색상, 메인색상Light)
+                            )
+                        )
+                )
+            }
         }
 
         // 상세 내용 (펼쳐졌을 때만)
@@ -133,35 +165,24 @@ fun 진급카운트다운(
                     .padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                // 승급 임박 안내 문구
+                if (승급임박) {
+                    Text(
+                        text = "거의 다 됐어요!",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = 메인색상
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                }
+
                 // 시간 표시 (깜빡이는 효과)
                 Text(
                     text = 남은시간포맷,
                     fontSize = 28.sp,
                     fontWeight = FontWeight.Bold,
-                    color = TossBlue.copy(alpha = pulseAlpha)
+                    color = 메인색상.copy(alpha = pulseAlpha)
                 )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // 진행 바
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(6.dp)
-                        .clip(RoundedCornerShape(3.dp))
-                        .background(TossBlue.copy(alpha = 0.2f))
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxHeight()
-                            .fillMaxWidth(animatedProgress)
-                            .background(
-                                Brush.horizontalGradient(
-                                    colors = listOf(TossBlueDark, TossBlue, TossBlueLight)
-                                )
-                            )
-                    )
-                }
             }
         }
     }
@@ -461,7 +482,10 @@ private fun 시간포맷(밀리초: Long): String {
     return when {
         시간 > 0 -> "${시간}시간 ${분}분 ${초}초"
         분 > 0 -> "${분}분 ${초}초"
-        초 <= 10 -> "거의 다 됐어요!"
         else -> "${초}초"
     }
+}
+
+private fun 승급임박여부(밀리초: Long): Boolean {
+    return 밀리초 in 1..10000  // 10초 이하
 }

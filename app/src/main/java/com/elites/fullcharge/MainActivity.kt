@@ -32,6 +32,7 @@ import com.elites.fullcharge.ui.MainViewModel
 import com.elites.fullcharge.ui.screens.ChatScreen
 import com.elites.fullcharge.ui.screens.ExileScreen
 import com.elites.fullcharge.ui.screens.GatekeeperScreen
+import com.elites.fullcharge.ui.screens.OnboardingScreen
 import com.elites.fullcharge.ui.theme.ElitesTheme
 import com.elites.fullcharge.util.SoundManager
 import com.google.android.gms.ads.MobileAds
@@ -103,6 +104,10 @@ class MainActivity : ComponentActivity() {
                         adManager.loadInterstitialAd() // 퇴장 대비 미리 로드
                     } else {
                         풀파워모드종료()
+                        // 복구 가능한 세션이 있으면 보상형 광고 미리 로드
+                        if (uiState.restorableSessionDuration != null) {
+                            adManager.loadRewardedAd()
+                        }
                     }
                 }
 
@@ -112,7 +117,13 @@ class MainActivity : ComponentActivity() {
                         .fillMaxSize()
                         .background(com.elites.fullcharge.ui.theme.BackgroundWhite)
                 ) {
-                    MainContent(
+                    // 온보딩 완료 여부에 따라 화면 분기
+                    if (!uiState.onboardingCompleted) {
+                        OnboardingScreen(
+                            onComplete = { viewModel.completeOnboarding() }
+                        )
+                    } else {
+                        MainContent(
                         uiState = uiState,
                         onEnterPortal = { viewModel.enterChat() },
                         onSendMessage = { viewModel.sendMessage(it) },
@@ -144,8 +155,26 @@ class MainActivity : ComponentActivity() {
                                 viewModel.returnToGatekeeper()
                             }
                         },
+                        onRestoreWithAd = { previousDuration ->
+                            // 보상형 광고 표시 후 계급 복구하며 입장
+                            adManager.showRewardedAd(
+                                activity = this@MainActivity,
+                                onRewarded = {
+                                    viewModel.enterChatWithRestore(previousDuration)
+                                },
+                                onAdDismissed = {
+                                    // 광고가 닫혔을 때 (보상을 받았든 안 받았든)
+                                }
+                            )
+                        },
+                        onDismissRestore = { viewModel.dismissRestorableSession() },
+                        onDismissAchievement = { viewModel.dismissAchievementPopup() },
+                        onDismissCrisisEscape = { viewModel.dismissCrisisEscapeCelebration() },
+                        onDismissChatEvent = { viewModel.dismissChatEvent() },
+                        onDismissTimeEvent = { viewModel.dismissTimeEvent() },
                         bannerAdContent = { adManager.BannerAd() }
                     )
+                    }
                 }
             }
         }
@@ -166,6 +195,12 @@ class MainActivity : ComponentActivity() {
         onCreatePoll: (String, List<String>) -> Unit,
         onVotePoll: (String, Int) -> Unit,
         onExileDismiss: () -> Unit,
+        onRestoreWithAd: (Long) -> Unit,
+        onDismissRestore: () -> Unit,
+        onDismissAchievement: () -> Unit,
+        onDismissCrisisEscape: () -> Unit,
+        onDismissChatEvent: () -> Unit,
+        onDismissTimeEvent: () -> Unit,
         bannerAdContent: @Composable () -> Unit
     ) {
         AnimatedContent(
@@ -199,7 +234,10 @@ class MainActivity : ComponentActivity() {
                     GatekeeperScreen(
                         batteryState = uiState.batteryState,
                         onlineUserCount = uiState.onlineUserCount,
-                        onEnterPortal = onEnterPortal
+                        onEnterPortal = onEnterPortal,
+                        restorableSessionDuration = uiState.restorableSessionDuration,
+                        onRestoreWithAd = onRestoreWithAd,
+                        onDismissRestore = onDismissRestore
                     )
                 }
                 AppScreen.CHAT -> {
@@ -224,7 +262,19 @@ class MainActivity : ComponentActivity() {
                         onVotePoll = onVotePoll,
                         isInDanger = uiState.isInDanger,
                         dangerCountdown = uiState.dangerCountdown,
-                        bannerAdContent = bannerAdContent
+                        bannerAdContent = bannerAdContent,
+                        newlyUnlockedAchievement = uiState.newlyUnlockedAchievement,
+                        onDismissAchievement = onDismissAchievement,
+                        unlockedAchievements = uiState.unlockedAchievements,
+                        showCrisisEscapeCelebration = uiState.showCrisisEscapeCelebration,
+                        onDismissCrisisEscape = onDismissCrisisEscape,
+                        latestChatEvent = uiState.latestChatEvent,
+                        onDismissChatEvent = onDismissChatEvent,
+                        comboState = uiState.comboState,
+                        personalHourMilestone = uiState.personalHourMilestone,
+                        isHourlyChime = uiState.isHourlyChime,
+                        isMidnightSpecial = uiState.isMidnightSpecial,
+                        onDismissTimeEvent = onDismissTimeEvent
                     )
                 }
                 AppScreen.EXILE -> {
