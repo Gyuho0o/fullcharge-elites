@@ -1201,6 +1201,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun onAppForeground() {
         if (_uiState.value.isInChat) {
+            // 관리자 모드는 배터리 체크 안 함
+            if (_uiState.value.isAdminMode) {
+                return
+            }
+
             // 배터리 상태 즉시 업데이트
             updateBatteryStatus()
 
