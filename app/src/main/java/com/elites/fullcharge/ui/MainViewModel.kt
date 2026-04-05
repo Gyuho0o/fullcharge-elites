@@ -160,11 +160,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             batteryManager.batteryState.collect { state ->
                 val currentState = _uiState.value
                 val isInChat = currentState.isInChat
+                val isAdminMode = currentState.isAdminMode
                 val wasInDanger = currentState.isInDanger
 
                 _uiState.update { it.copy(batteryState = state) }
 
-                if (isInChat) {
+                // 관리자 모드는 배터리 체크 안 함
+                if (isInChat && !isAdminMode) {
                     // 배터리가 100% 미만 + 충전 안 하면 위험 모드 시작
                     if (state.level < 100 && !state.isCharging && !wasInDanger) {
                         startDangerCountdown()
