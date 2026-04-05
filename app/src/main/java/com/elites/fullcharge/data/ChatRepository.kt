@@ -111,12 +111,12 @@ class ChatRepository {
                     }
                 }
 
-                // 입장 이후 메시지 + 입장 이전 최근 10개 메시지
+                // 입장 이후 메시지 + 입장 이전 최근 30개 메시지
                 val sortedMessages = messages.sortedBy { it.timestamp }
                 val messagesAfterJoin = sortedMessages.filter { it.timestamp >= joinedAt }
                 val messagesBeforeJoin = sortedMessages
                     .filter { it.timestamp < joinedAt && !it.isSystemMessage }
-                    .takeLast(10)
+                    .takeLast(30)
 
                 val filteredMessages = (messagesBeforeJoin + messagesAfterJoin)
                     .distinctBy { it.id }
