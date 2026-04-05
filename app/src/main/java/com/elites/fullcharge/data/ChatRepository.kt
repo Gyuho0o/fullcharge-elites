@@ -111,8 +111,15 @@ class ChatRepository {
                     }
                 }
 
-                val filteredMessages = messages
-                    .filter { it.timestamp >= joinedAt }
+                // 입장 이후 메시지 + 입장 이전 최근 10개 메시지
+                val sortedMessages = messages.sortedBy { it.timestamp }
+                val messagesAfterJoin = sortedMessages.filter { it.timestamp >= joinedAt }
+                val messagesBeforeJoin = sortedMessages
+                    .filter { it.timestamp < joinedAt && !it.isSystemMessage }
+                    .takeLast(10)
+
+                val filteredMessages = (messagesBeforeJoin + messagesAfterJoin)
+                    .distinctBy { it.id }
                     .sortedBy { it.timestamp }
                 trySend(filteredMessages)
             }
