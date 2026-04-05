@@ -204,9 +204,9 @@ fun ChatScreen(
         }
     }
 
-    // 키보드가 올라오면 최신 메시지로 스크롤
+    // 키보드 상태 변경 시 최신 메시지로 스크롤
     LaunchedEffect(isKeyboardVisible) {
-        if (isKeyboardVisible && messages.isNotEmpty()) {
+        if (messages.isNotEmpty()) {
             // 약간의 딜레이 후 스크롤 (키보드 애니메이션 완료 대기)
             delay(150)
             listState.animateScrollToItem(messages.size - 1)
