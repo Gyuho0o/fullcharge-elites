@@ -22,8 +22,8 @@ enum class EliteRank(
         maxMinutes = 3
     ),
     PRIVATE_FIRST(
-        koreanName = "일등병",
-        description = "일등병 진급! 아직 갈 길이 멀다",
+        koreanName = "일병",
+        description = "일병 진급! 아직 갈 길이 멀다",
         minMinutes = 3,
         maxMinutes = 7
     ),

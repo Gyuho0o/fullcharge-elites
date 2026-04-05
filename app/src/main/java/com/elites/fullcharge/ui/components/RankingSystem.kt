@@ -455,16 +455,21 @@ private fun 역대랭킹항목(
             modifier = Modifier.width(28.dp)
         )
 
-        // 등급 배지
+        // 등급 배지 (버블 색상과 통일)
+        val isEnlisted = 계급 in listOf(
+            EliteRank.TRAINEE, EliteRank.PRIVATE_SECOND, EliteRank.PRIVATE_FIRST,
+            EliteRank.CORPORAL, EliteRank.SERGEANT
+        )
         val 배지색상 = when (계급) {
             EliteRank.GENERAL, EliteRank.LIEUTENANT_GENERAL,
             EliteRank.MAJOR_GENERAL, EliteRank.BRIGADIER_GENERAL -> Color(0xFFD97706)
             EliteRank.COLONEL, EliteRank.LIEUTENANT_COLONEL, EliteRank.MAJOR -> Color(0xFF7C3AED)
-            EliteRank.CAPTAIN, EliteRank.FIRST_LIEUTENANT, EliteRank.SECOND_LIEUTENANT -> Color(0xFF059669)
+            EliteRank.CAPTAIN, EliteRank.FIRST_LIEUTENANT, EliteRank.SECOND_LIEUTENANT -> Color(0xFF10B981)
             EliteRank.SERGEANT_MAJOR, EliteRank.MASTER_SERGEANT,
-            EliteRank.SERGEANT_FIRST, EliteRank.STAFF_SERGEANT -> Color(0xFF2563EB)
-            else -> TextTertiary
+            EliteRank.SERGEANT_FIRST, EliteRank.STAFF_SERGEANT -> Color(0xFF3B82F6)
+            else -> Color(0xFFFEE500)  // 병사/훈련병: 노란색
         }
+        val 텍스트색상 = if (isEnlisted) Color.Black else Color.White
         Box(
             modifier = Modifier
                 .clip(RoundedCornerShape(4.dp))
@@ -475,7 +480,7 @@ private fun 역대랭킹항목(
                 text = 계급.koreanName,
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Medium,
-                color = Color.White
+                color = 텍스트색상
             )
         }
 
@@ -618,7 +623,11 @@ private fun 리더보드항목(
             modifier = Modifier.width(28.dp)
         )
 
-        // 등급 배지
+        // 등급 배지 (버블 색상과 통일)
+        val isEnlisted = 계급 in listOf(
+            EliteRank.TRAINEE, EliteRank.PRIVATE_SECOND, EliteRank.PRIVATE_FIRST,
+            EliteRank.CORPORAL, EliteRank.SERGEANT
+        )
         val 배지색상 = when (계급) {
             // 장성
             EliteRank.GENERAL, EliteRank.LIEUTENANT_GENERAL,
@@ -626,13 +635,14 @@ private fun 리더보드항목(
             // 영관급
             EliteRank.COLONEL, EliteRank.LIEUTENANT_COLONEL, EliteRank.MAJOR -> Color(0xFF7C3AED)
             // 위관급
-            EliteRank.CAPTAIN, EliteRank.FIRST_LIEUTENANT, EliteRank.SECOND_LIEUTENANT -> Color(0xFF059669)
+            EliteRank.CAPTAIN, EliteRank.FIRST_LIEUTENANT, EliteRank.SECOND_LIEUTENANT -> Color(0xFF10B981)
             // 부사관
             EliteRank.SERGEANT_MAJOR, EliteRank.MASTER_SERGEANT,
-            EliteRank.SERGEANT_FIRST, EliteRank.STAFF_SERGEANT -> Color(0xFF2563EB)
-            // 병사
-            else -> TextTertiary
+            EliteRank.SERGEANT_FIRST, EliteRank.STAFF_SERGEANT -> Color(0xFF3B82F6)
+            // 병사/훈련병: 노란색
+            else -> Color(0xFFFEE500)
         }
+        val 텍스트색상 = if (isEnlisted) Color.Black else Color.White
         Box(
             modifier = Modifier
                 .clip(RoundedCornerShape(4.dp))
@@ -643,7 +653,7 @@ private fun 리더보드항목(
                 text = 계급.koreanName,
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Medium,
-                color = Color.White
+                color = 텍스트색상
             )
         }
 
@@ -676,6 +686,49 @@ fun 진급축하오버레이(
     표시: Boolean,
     onDismiss: () -> Unit
 ) {
+    // 병사/훈련병 여부 확인
+    val isEnlisted = 새계급 in listOf(
+        EliteRank.TRAINEE, EliteRank.PRIVATE_SECOND, EliteRank.PRIVATE_FIRST,
+        EliteRank.CORPORAL, EliteRank.SERGEANT
+    )
+
+    // 버블 색상과 통일된 배지 색상 (RankBadge와 동일)
+    val badgeColors = when (새계급) {
+        // 장성 (골드 그라데이션)
+        EliteRank.GENERAL -> listOf(Color(0xFF78350F), Color(0xFFD97706), Color(0xFFFBBF24))
+        EliteRank.LIEUTENANT_GENERAL -> listOf(Color(0xFF92400E), Color(0xFFD97706))
+        EliteRank.MAJOR_GENERAL -> listOf(Color(0xFFB45309), Color(0xFFD97706))
+        EliteRank.BRIGADIER_GENERAL -> listOf(Color(0xFFD97706), Color(0xFFF59E0B))
+        // 영관급 (보라색 그라데이션)
+        EliteRank.COLONEL -> listOf(Color(0xFF581C87), Color(0xFF7C3AED))
+        EliteRank.LIEUTENANT_COLONEL -> listOf(Color(0xFF6D28D9), Color(0xFF8B5CF6))
+        EliteRank.MAJOR -> listOf(Color(0xFF7C3AED), Color(0xFFA78BFA))
+        // 위관급 (초록색 그라데이션)
+        EliteRank.CAPTAIN -> listOf(Color(0xFF047857), Color(0xFF10B981))
+        EliteRank.FIRST_LIEUTENANT -> listOf(Color(0xFF059669), Color(0xFF34D399))
+        EliteRank.SECOND_LIEUTENANT -> listOf(Color(0xFF10B981), Color(0xFF6EE7B7))
+        // 부사관 (파란색 그라데이션)
+        EliteRank.SERGEANT_MAJOR -> listOf(Color(0xFF1E40AF), Color(0xFF3B82F6))
+        EliteRank.MASTER_SERGEANT -> listOf(Color(0xFF1D4ED8), Color(0xFF60A5FA))
+        EliteRank.SERGEANT_FIRST -> listOf(Color(0xFF2563EB), Color(0xFF93C5FD))
+        EliteRank.STAFF_SERGEANT -> listOf(Color(0xFF3B82F6), Color(0xFFBFDBFE))
+        // 병사/훈련병 (카카오톡 스타일 노란색)
+        else -> listOf(Color(0xFFFEE500), Color(0xFFFEE500))
+    }
+
+    // 텍스트 색상 (병사/훈련병은 검은색)
+    val textColor = if (isEnlisted) Color.Black else Color.White
+
+    // 계급별 아이콘 (RankBadge와 동일)
+    val rankIcon = when (새계급) {
+        EliteRank.GENERAL -> "⭐"
+        EliteRank.LIEUTENANT_GENERAL, EliteRank.MAJOR_GENERAL, EliteRank.BRIGADIER_GENERAL -> "★"
+        EliteRank.COLONEL, EliteRank.LIEUTENANT_COLONEL, EliteRank.MAJOR -> "◆"
+        EliteRank.CAPTAIN, EliteRank.FIRST_LIEUTENANT, EliteRank.SECOND_LIEUTENANT -> "▲"
+        EliteRank.SERGEANT_MAJOR, EliteRank.MASTER_SERGEANT, EliteRank.SERGEANT_FIRST, EliteRank.STAFF_SERGEANT -> "■"
+        else -> null
+    }
+
     AnimatedVisibility(
         visible = 표시,
         enter = fadeIn() + scaleIn(),
@@ -700,16 +753,37 @@ fun 진급축하오버레이(
                     color = TextSecondary
                 )
 
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // 배지 스타일 계급 표시 (RankBadge와 통일)
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Brush.horizontalGradient(badgeColors))
+                        .padding(horizontal = 24.dp, vertical = 12.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        if (rankIcon != null) {
+                            Text(
+                                text = rankIcon,
+                                fontSize = 20.sp,
+                                color = textColor
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
+                        Text(
+                            text = 새계급.koreanName,
+                            fontSize = 28.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = textColor
+                        )
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(12.dp))
-
-                Text(
-                    text = 새계급.koreanName,
-                    fontSize = 32.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TossBlue
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
 
                 Text(
                     text = 새계급.description,

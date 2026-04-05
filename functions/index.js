@@ -15,9 +15,9 @@ exports.sendChatNotification = functions
   .onCreate(async (snapshot, context) => {
     const message = snapshot.val();
 
-    // 시스템 메시지나 봇 메시지는 알림 안 함
-    if (message.isSystemMessage || message.isBotMessage) {
-      console.log("Skipping notification for system/bot message");
+    // 시스템 메시지는 알림 안 함
+    if (message.isSystemMessage) {
+      console.log("Skipping notification for system message");
       return null;
     }
 

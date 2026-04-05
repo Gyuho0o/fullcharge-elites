@@ -41,7 +41,6 @@ class ChatRepository {
                         val timestamp = child.child("timestamp").getValue(Long::class.java) ?: 0L
                         val rank = child.child("rank").getValue(String::class.java) ?: EliteRank.TRAINEE.name
                         val isSystemMessage = child.child("isSystemMessage").value == true
-                        val isBotMessage = child.child("isBotMessage").value == true
 
                         // readBy
                         val readBy = child.child("readBy").children
@@ -90,7 +89,6 @@ class ChatRepository {
                             timestamp = timestamp,
                             rank = rank,
                             isSystemMessage = isSystemMessage,
-                            isBotMessage = isBotMessage,
                             readBy = readBy,
                             replyToId = replyToId,
                             replyToNickname = replyToNickname,
@@ -179,53 +177,6 @@ class ChatRepository {
             timestamp = System.currentTimeMillis(),
             rank = EliteRank.TRAINEE.name,
             isSystemMessage = true
-        )
-        messagesRef.child(key).setValue(message.toMap()).await()
-    }
-
-    /**
-     * 봇 메시지 전송 (랜덤 캐릭터 사용)
-     */
-    suspend fun sendBotMessage(text: String) {
-        val character = BotCharacters.random()
-        sendBotMessageWithCharacter(character, text)
-    }
-
-    /**
-     * 봇 캐릭터별 메시지 전송
-     */
-    suspend fun sendBotMessageWithCharacter(character: BotCharacter, text: String) {
-        val key = messagesRef.push().key ?: UUID.randomUUID().toString()
-        val message = ChatMessage(
-            id = key,
-            userId = character.id,
-            nickname = character.nickname,
-            message = text,
-            timestamp = System.currentTimeMillis(),
-            rank = character.rank.name
-        )
-        messagesRef.child(key).setValue(message.toMap()).await()
-    }
-
-    /**
-     * 봇 퀴즈를 투표로 전송 (랜덤 캐릭터 사용, 3분 제한)
-     */
-    suspend fun sendBotQuizAsPoll(question: String, options: List<String>) {
-        val character = BotCharacters.random()
-        val key = messagesRef.push().key ?: UUID.randomUUID().toString()
-        val currentTime = System.currentTimeMillis()
-        val message = ChatMessage(
-            id = key,
-            userId = character.id,
-            nickname = character.nickname,
-            message = question,
-            timestamp = currentTime,
-            rank = character.rank.name,
-            isPoll = true,
-            pollQuestion = question,
-            pollOptions = options,
-            pollVotes = options.indices.associate { it.toString() to emptyList() },
-            pollEndTime = currentTime + (3 * 60 * 1000L)  // 3분 후 종료
         )
         messagesRef.child(key).setValue(message.toMap()).await()
     }

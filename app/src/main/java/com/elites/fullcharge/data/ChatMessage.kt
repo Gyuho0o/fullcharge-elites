@@ -8,7 +8,6 @@ data class ChatMessage(
     val timestamp: Long = System.currentTimeMillis(),
     val rank: String = EliteRank.TRAINEE.name,
     val isSystemMessage: Boolean = false,
-    val isBotMessage: Boolean = false,  // 봇 메시지 여부
     val readBy: List<String> = emptyList(),  // 읽은 사용자 ID 목록
     // 답장 관련 필드
     val replyToId: String? = null,           // 답장 대상 메시지 ID
@@ -27,13 +26,8 @@ data class ChatMessage(
     // 콘텐츠 경고 메시지 (스팸/광고 의심 등)
     val warning: String? = null
 ) {
-    companion object {
-        // 봇 (일반 유저처럼 보이도록)
-        const val BOT_USER_ID = "user_battery_fairy"
-        const val BOT_NICKNAME = "배터리요정"
-    }
     // Firebase를 위한 빈 생성자
-    constructor() : this("", "", "", "", 0L, EliteRank.TRAINEE.name, false, false, emptyList(), null, null, null, emptyMap(), false, null, emptyList(), emptyMap(), 0L, emptyList(), null)
+    constructor() : this("", "", "", "", 0L, EliteRank.TRAINEE.name, false, emptyList(), null, null, null, emptyMap(), false, null, emptyList(), emptyMap(), 0L, emptyList(), null)
 
     fun toMap(): Map<String, Any?> = mapOf(
         "id" to id,
@@ -43,7 +37,6 @@ data class ChatMessage(
         "timestamp" to timestamp,
         "rank" to rank,
         "isSystemMessage" to isSystemMessage,
-        "isBotMessage" to isBotMessage,
         "readBy" to readBy,
         "replyToId" to replyToId,
         "replyToNickname" to replyToNickname,

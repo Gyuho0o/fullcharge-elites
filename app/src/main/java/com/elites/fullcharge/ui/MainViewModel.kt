@@ -1,11 +1,14 @@
 package com.elites.fullcharge.ui
 
 import android.app.Application
+import android.content.Intent
+import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.elites.fullcharge.ElitesApplication
 import com.elites.fullcharge.data.*
 import com.elites.fullcharge.notification.EliteMessagingService
+import com.elites.fullcharge.service.BatteryMonitorService
 import com.elites.fullcharge.util.ContentFilter
 import com.google.firebase.messaging.FirebaseMessaging
 import java.util.Calendar
@@ -66,9 +69,6 @@ data class MainUiState(
 ) {
     companion object {
         const val DANGER_COUNTDOWN_SECONDS = 10  // 10초 카운트다운
-        // 봇 발동 시간 범위 (2~4분 랜덤)
-        const val BOT_SILENCE_MIN_MS = 2 * 60 * 1000L
-        const val BOT_SILENCE_MAX_MS = 4 * 60 * 1000L
     }
 }
 
@@ -86,20 +86,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var dangerCountdownJob: Job? = null
     private var activityUpdateJob: Job? = null
     private var timeEventJob: Job? = null
-    private var botContentJob: Job? = null
     private var reportsObserverJob: Job? = null
 
     // 시간 기반 이벤트 추적
     private var lastCheckedHour = -1
-
-    // 봇 콘텐츠 관련
-    private var lastMessageTime = 0L
     private var lastPersonalHour = -1L
-    private var currentBotThreshold = getRandomBotThreshold()  // 랜덤 타이밍
-
-    private fun getRandomBotThreshold(): Long {
-        return (MainUiState.BOT_SILENCE_MIN_MS..MainUiState.BOT_SILENCE_MAX_MS).random()
-    }
 
     // 도배 방지용
     private var lastSentMessage: String = ""
@@ -307,8 +298,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             // 시간 기반 이벤트 모니터링 시작
             startTimeEventMonitoring()
 
-            // 봇 콘텐츠 타이머 시작
-            startBotContentTimer()
+            // 백그라운드 서비스 시작 (온라인 상태 유지)
+            startBackgroundService(startTime)
         }
     }
 
@@ -365,8 +356,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             // 시간 기반 이벤트 모니터링 시작
             startTimeEventMonitoring()
 
-            // 봇 콘텐츠 타이머 시작
-            startBotContentTimer()
+            // 백그라운드 서비스 시작 (온라인 상태 유지)
+            startBackgroundService(adjustedStartTime)
         }
     }
 
@@ -381,16 +372,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun startMessageObservation() {
         viewModelScope.launch {
-            var previousMessageCount = 0
             chatRepository.getMessages().collect { messages ->
                 _uiState.update { it.copy(messages = messages) }
-
-                // 새 메시지가 있으면 봇 타이머 리셋 (시스템 메시지 제외)
-                val nonSystemMessages = messages.filter { !it.isSystemMessage }
-                if (nonSystemMessages.size > previousMessageCount) {
-                    resetBotTimer()
-                }
-                previousMessageCount = nonSystemMessages.size
 
                 // 다른 사람의 메시지를 읽음 처리
                 val userId = _uiState.value.userId
@@ -415,7 +398,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun startOnlineUsersObservation() {
         viewModelScope.launch {
             chatRepository.getOnlineUsers().collect { users ->
-                _uiState.update { it.copy(onlineUsers = users) }
+                val state = _uiState.value
+                // 현재 사용자가 목록에 없으면 추가 (Firebase 동기화 지연 대응)
+                val usersWithSelf = if (state.isInChat && !state.isAdminMode &&
+                    users.none { it.userId == state.userId }
+                ) {
+                    val currentUser = EliteUser(
+                        userId = state.userId,
+                        nickname = state.nickname,
+                        sessionStartTime = state.sessionStartTime,
+                        lastActiveTime = System.currentTimeMillis(),
+                        isOnline = true,
+                        isAdmin = false
+                    )
+                    users + currentUser
+                } else {
+                    users
+                }
+                _uiState.update { it.copy(onlineUsers = usersWithSelf) }
             }
         }
     }
@@ -555,12 +555,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             // 콤보 업데이트
             updateCombo()
 
-            // 봇 타이머 리셋 (새 메시지 전송 시)
-            resetBotTimer()
-
-            // 봇 반응 체크 (유저 메시지에 봇이 반응)
-            checkBotReaction(text)
-
             // 답장 상태 초기화
             _uiState.update { it.copy(replyingTo = null) }
         }
@@ -673,8 +667,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             batteryMonitorJob?.cancel()
             activityUpdateJob?.cancel()
             timeEventJob?.cancel()
-            botContentJob?.cancel()
             reportsObserverJob?.cancel()
+
+            // 백그라운드 서비스 종료 (퇴장 메시지는 이미 전송됨)
+            stopBackgroundService()
 
             // 추방 화면으로 이동
             _uiState.update {
@@ -741,8 +737,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             dangerCountdownJob?.cancel()
             activityUpdateJob?.cancel()
             timeEventJob?.cancel()
-            botContentJob?.cancel()
             reportsObserverJob?.cancel()
+
+            // 백그라운드 서비스 종료 (정상 종료이므로 퇴장 메시지 없음)
+            stopBackgroundServiceGracefully()
 
             // 관리자였으면 원래 닉네임 복원
             val restoredNickname = if (wasAdminMode) {
@@ -983,50 +981,44 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // ========== 봇 콘텐츠 시스템 ==========
+    // ========== 백그라운드 서비스 ==========
 
-    private fun startBotContentTimer() {
-        botContentJob?.cancel()
-        lastMessageTime = System.currentTimeMillis()
-        currentBotThreshold = getRandomBotThreshold()
+    /**
+     * 백그라운드 서비스 시작 (온라인 상태 유지)
+     */
+    private fun startBackgroundService(sessionStartTime: Long) {
+        val context = getApplication<Application>()
+        val intent = Intent(context, BatteryMonitorService::class.java).apply {
+            putExtra(BatteryMonitorService.EXTRA_USER_ID, _uiState.value.userId)
+            putExtra(BatteryMonitorService.EXTRA_NICKNAME, _uiState.value.nickname)
+            putExtra(BatteryMonitorService.EXTRA_SESSION_START_TIME, sessionStartTime)
+        }
 
-        botContentJob = viewModelScope.launch {
-            while (_uiState.value.isInChat) {
-                // 10~20초 랜덤 체크 간격 (더 자연스럽게)
-                delay((10_000L..20_000L).random())
-
-                val timeSinceLastMessage = System.currentTimeMillis() - lastMessageTime
-                if (timeSinceLastMessage >= currentBotThreshold) {
-                    sendBotContent()
-                    lastMessageTime = System.currentTimeMillis()
-                    currentBotThreshold = getRandomBotThreshold()  // 다음 발동 시간도 랜덤
-                }
-            }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.startForegroundService(intent)
+        } else {
+            context.startService(intent)
         }
     }
 
     /**
-     * 메시지 수신 시 타이머 리셋 (외부에서 호출)
+     * 백그라운드 서비스 종료 (퇴장 시 - 퇴장 메시지는 서비스에서 처리)
      */
-    fun resetBotTimer() {
-        lastMessageTime = System.currentTimeMillis()
-    }
-
-    private suspend fun sendBotContent() {
-        val content = BotContentRepository.getRandomMessage()
-        chatRepository.sendBotMessageWithCharacter(content.character, content.message)
+    private fun stopBackgroundService() {
+        val context = getApplication<Application>()
+        context.stopService(Intent(context, BatteryMonitorService::class.java))
     }
 
     /**
-     * 유저 메시지에 봇이 반응
+     * 백그라운드 서비스 정상 종료 (leaveChat - 퇴장 메시지 없이)
      */
-    private suspend fun checkBotReaction(userMessage: String) {
-        val reaction = BotContentRepository.getReactionToMessage(userMessage)
-        if (reaction != null) {
-            // 1~5초 랜덤 딜레이 후 반응 (더 자연스럽게)
-            delay((1000L..5000L).random())
-            chatRepository.sendBotMessageWithCharacter(reaction.character, reaction.message)
+    private fun stopBackgroundServiceGracefully() {
+        val context = getApplication<Application>()
+        // ACTION_GRACEFUL_STOP을 보내서 정상 종료임을 알림
+        val intent = Intent(context, BatteryMonitorService::class.java).apply {
+            action = BatteryMonitorService.ACTION_GRACEFUL_STOP
         }
+        context.startService(intent)
     }
 
     // ========== 관리자 모드 ==========
@@ -1107,9 +1099,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             startSessionTimer()
             startActivityUpdate()
             startTimeEventMonitoring()
-            startBotContentTimer()
             startReportsObservation()  // 관리자: 신고 목록 관찰
-            // 관리자는 배터리 모니터링 안 함 (강퇴 방지)
+            // 관리자는 배터리 모니터링 및 백그라운드 서비스 안 함
         }
     }
 
@@ -1318,7 +1309,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         dangerCountdownJob?.cancel()
         activityUpdateJob?.cancel()
         timeEventJob?.cancel()
-        botContentJob?.cancel()
         reportsObserverJob?.cancel()
     }
 }

@@ -38,7 +38,7 @@ import com.elites.fullcharge.ui.screens.GatekeeperScreen
 import com.elites.fullcharge.ui.screens.OnboardingScreen
 import com.elites.fullcharge.ui.theme.ElitesTheme
 import com.elites.fullcharge.update.InAppUpdateManager
-import com.elites.fullcharge.util.SoundManager
+import com.elites.fullcharge.util.HapticManager
 import com.google.android.gms.ads.MobileAds
 import com.google.android.play.core.install.model.ActivityResult
 
@@ -46,7 +46,7 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: MainViewModel by viewModels()
     private lateinit var adManager: AdManager
-    private lateinit var soundManager: SoundManager
+    private lateinit var hapticManager: HapticManager
     private lateinit var inAppUpdateManager: InAppUpdateManager
 
     // In-App Update 결과 처리
@@ -91,8 +91,8 @@ class MainActivity : ComponentActivity() {
         // 배터리 최적화 무시 요청
         requestBatteryOptimizationExemption()
 
-        // 사운드 매니저 초기화
-        soundManager = SoundManager(this)
+        // 햅틱 매니저 초기화
+        hapticManager = HapticManager(this)
 
         // 배터리 상태 리시버 등록
         registerBatteryReceiver()
@@ -108,19 +108,19 @@ class MainActivity : ComponentActivity() {
             ElitesTheme {
                 val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-                // 화면 전환 시 사운드 재생
+                // 화면 전환 시 햅틱 재생
                 LaunchedEffect(uiState.currentScreen) {
                     when (uiState.currentScreen) {
-                        AppScreen.CHAT -> soundManager.playEntrySound()
-                        AppScreen.EXILE -> soundManager.playExileSound()
+                        AppScreen.CHAT -> hapticManager.playEntryHaptic()
+                        AppScreen.EXILE -> hapticManager.playExileHaptic()
                         else -> {}
                     }
                 }
 
-                // 위험 모드 시 경고음
+                // 위험 모드 시 경고 햅틱
                 LaunchedEffect(uiState.isInDanger, uiState.dangerCountdown) {
                     if (uiState.isInDanger && uiState.dangerCountdown <= 5) {
-                        soundManager.playDangerSound()
+                        hapticManager.playDangerHaptic()
                     }
                 }
 
@@ -433,7 +433,7 @@ class MainActivity : ComponentActivity() {
         } catch (e: Exception) {
             // 이미 해제됨
         }
-        soundManager.release()
+        hapticManager.release()
 
         // In-App Update 리스너 해제
         if (::inAppUpdateManager.isInitialized) {
