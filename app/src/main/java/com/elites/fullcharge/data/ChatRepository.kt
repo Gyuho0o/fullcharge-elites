@@ -582,4 +582,75 @@ class ChatRepository {
             e.printStackTrace()
         }
     }
+
+    /**
+     * 관리자: 메시지 삭제
+     */
+    suspend fun deleteMessage(messageId: String) {
+        try {
+            messagesRef.child(messageId).removeValue().await()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    /**
+     * 관리자: 신고 목록 조회 (실시간)
+     */
+    fun getReports(): Flow<List<Report>> = callbackFlow {
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val reports = mutableListOf<Report>()
+                for (child in snapshot.children) {
+                    try {
+                        val report = Report(
+                            id = child.child("id").getValue(String::class.java) ?: "",
+                            messageId = child.child("messageId").getValue(String::class.java) ?: "",
+                            messageContent = child.child("messageContent").getValue(String::class.java) ?: "",
+                            reportedUserId = child.child("reportedUserId").getValue(String::class.java) ?: "",
+                            reportedNickname = child.child("reportedNickname").getValue(String::class.java) ?: "",
+                            reporterUserId = child.child("reporterUserId").getValue(String::class.java) ?: "",
+                            reporterNickname = child.child("reporterNickname").getValue(String::class.java) ?: "",
+                            reason = child.child("reason").getValue(String::class.java) ?: "",
+                            timestamp = child.child("timestamp").getValue(Long::class.java) ?: 0L,
+                            status = child.child("status").getValue(String::class.java) ?: ReportStatus.PENDING.name
+                        )
+                        reports.add(report)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+                // 최신 순으로 정렬
+                trySend(reports.sortedByDescending { it.timestamp })
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                close(error.toException())
+            }
+        }
+        reportsRef.addValueEventListener(listener)
+        awaitClose { reportsRef.removeEventListener(listener) }
+    }
+
+    /**
+     * 관리자: 신고 상태 업데이트
+     */
+    suspend fun updateReportStatus(reportId: String, status: ReportStatus) {
+        try {
+            reportsRef.child(reportId).child("status").setValue(status.name).await()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    /**
+     * 관리자: 신고 삭제
+     */
+    suspend fun deleteReport(reportId: String) {
+        try {
+            reportsRef.child(reportId).removeValue().await()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
 }

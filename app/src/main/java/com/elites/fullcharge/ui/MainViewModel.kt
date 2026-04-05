@@ -37,6 +37,7 @@ data class MainUiState(
     // 관리자 모드
     val isAdminMode: Boolean = false,
     val showAdminLoginDialog: Boolean = false,
+    val reports: List<Report> = emptyList(),  // 신고 목록
     // 위험 카운트다운 관련
     val isInDanger: Boolean = false,
     val dangerCountdown: Int = 0,  // 남은 초
@@ -86,6 +87,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var activityUpdateJob: Job? = null
     private var timeEventJob: Job? = null
     private var botContentJob: Job? = null
+    private var reportsObserverJob: Job? = null
 
     // 시간 기반 이벤트 추적
     private var lastCheckedHour = -1
@@ -672,6 +674,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             activityUpdateJob?.cancel()
             timeEventJob?.cancel()
             botContentJob?.cancel()
+            reportsObserverJob?.cancel()
 
             // 추방 화면으로 이동
             _uiState.update {
@@ -739,6 +742,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             activityUpdateJob?.cancel()
             timeEventJob?.cancel()
             botContentJob?.cancel()
+            reportsObserverJob?.cancel()
 
             // 관리자였으면 원래 닉네임 복원
             val restoredNickname = if (wasAdminMode) {
@@ -1104,7 +1108,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             startActivityUpdate()
             startTimeEventMonitoring()
             startBotContentTimer()
+            startReportsObservation()  // 관리자: 신고 목록 관찰
             // 관리자는 배터리 모니터링 안 함 (강퇴 방지)
+        }
+    }
+
+    /**
+     * 관리자: 신고 목록 관찰 시작
+     */
+    private fun startReportsObservation() {
+        reportsObserverJob?.cancel()
+        reportsObserverJob = viewModelScope.launch {
+            chatRepository.getReports().collect { reports ->
+                _uiState.update { it.copy(reports = reports) }
+            }
         }
     }
 
@@ -1140,6 +1157,53 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             chatRepository.sendSystemMessage("[공지] $message")
+        }
+    }
+
+    /**
+     * 관리자: 메시지 삭제
+     */
+    fun deleteMessage(messageId: String) {
+        if (!_uiState.value.isAdminMode) return
+
+        viewModelScope.launch {
+            chatRepository.deleteMessage(messageId)
+        }
+    }
+
+    /**
+     * 관리자: 신고 상태 업데이트
+     */
+    fun updateReportStatus(reportId: String, status: ReportStatus) {
+        if (!_uiState.value.isAdminMode) return
+
+        viewModelScope.launch {
+            chatRepository.updateReportStatus(reportId, status)
+        }
+    }
+
+    /**
+     * 관리자: 신고 삭제 (기각)
+     */
+    fun dismissReport(reportId: String) {
+        if (!_uiState.value.isAdminMode) return
+
+        viewModelScope.launch {
+            chatRepository.deleteReport(reportId)
+        }
+    }
+
+    /**
+     * 관리자: 신고 처리 - 메시지 삭제 후 신고 완료 처리
+     */
+    fun handleReport(reportId: String, messageId: String, deleteMessage: Boolean = true) {
+        if (!_uiState.value.isAdminMode) return
+
+        viewModelScope.launch {
+            if (deleteMessage) {
+                chatRepository.deleteMessage(messageId)
+            }
+            chatRepository.updateReportStatus(reportId, ReportStatus.ACTIONED)
         }
     }
 
@@ -1255,5 +1319,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         activityUpdateJob?.cancel()
         timeEventJob?.cancel()
         botContentJob?.cancel()
+        reportsObserverJob?.cancel()
     }
 }

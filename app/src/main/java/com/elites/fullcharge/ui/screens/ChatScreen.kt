@@ -70,7 +70,9 @@ import com.elites.fullcharge.data.ChatMessage
 import com.elites.fullcharge.data.ComboState
 import com.elites.fullcharge.data.EliteRank
 import com.elites.fullcharge.data.EliteUser
+import com.elites.fullcharge.data.Report
 import com.elites.fullcharge.data.ReportReason
+import com.elites.fullcharge.data.ReportStatus
 import com.elites.fullcharge.ui.components.*
 import com.elites.fullcharge.ui.theme.*
 import com.elites.fullcharge.util.LinkPreviewFetcher
@@ -130,6 +132,11 @@ fun ChatScreen(
     onKickUser: (String, String) -> Unit = { _, _ -> },
     onChangeUserRank: (String, String, EliteRank) -> Unit = { _, _, _ -> },
     onSendAdminNotice: (String) -> Unit = {},
+    onDeleteMessage: (String) -> Unit = {},
+    // 신고 관리
+    reports: List<Report> = emptyList(),
+    onHandleReport: (String, String, Boolean) -> Unit = { _, _, _ -> },  // reportId, messageId, deleteMessage
+    onDismissReport: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var messageInput by remember { mutableStateOf("") }
@@ -350,7 +357,9 @@ fun ChatScreen(
                                             messageToReport = message
                                             showReportDialog = true
                                         }
-                                    }
+                                    },
+                                    isAdminMode = isAdminMode,
+                                    onDelete = { onDeleteMessage(message.id) }
                                 )
                             }
                         }
@@ -522,7 +531,14 @@ fun ChatScreen(
                     showAdminPanel = false
                 },
                 onSendNotice = { showAdminNoticeDialog = true },
-                onDismiss = { showAdminPanel = false }
+                onDismiss = { showAdminPanel = false },
+                reports = reports,
+                onHandleReport = { reportId, messageId, deleteMsg ->
+                    onHandleReport(reportId, messageId, deleteMsg)
+                },
+                onDismissReport = { reportId ->
+                    onDismissReport(reportId)
+                }
             )
         }
 
@@ -1059,9 +1075,12 @@ private fun ChatMessageItem(
     onlineUserCount: Int = 0,
     onReply: () -> Unit = {},
     onToggleReaction: (String) -> Unit = {},
-    onLongPress: () -> Unit = {}
+    onLongPress: () -> Unit = {},
+    isAdminMode: Boolean = false,
+    onDelete: () -> Unit = {}
 ) {
     var showReactionPicker by remember { mutableStateOf(false) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
     val availableReactions = listOf("👍", "❤️", "😂", "😮", "😢", "🔥")
     val haptic = LocalHapticFeedback.current
     // 안 읽은 사람 수 계산 (내 메시지에만 표시)
@@ -1488,8 +1507,53 @@ private fun ChatMessageItem(
                                     .padding(4.dp)
                             )
                         }
+                        // 관리자 삭제 버튼
+                        if (isAdminMode && !isOwnMessage) {
+                            Box(
+                                modifier = Modifier
+                                    .padding(start = 4.dp)
+                                    .width(1.dp)
+                                    .height(24.dp)
+                                    .background(DividerGray)
+                            )
+                            Text(
+                                text = "🗑️",
+                                fontSize = 22.sp,
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .clickable {
+                                        showReactionPicker = false
+                                        showDeleteConfirm = true
+                                    }
+                                    .padding(4.dp)
+                            )
+                        }
                     }
                 }
+            }
+
+            // 관리자 메시지 삭제 확인 다이얼로그
+            if (showDeleteConfirm) {
+                AlertDialog(
+                    onDismissRequest = { showDeleteConfirm = false },
+                    title = { Text("메시지 삭제") },
+                    text = { Text("이 메시지를 삭제하시겠습니까?\n삭제된 메시지는 복구할 수 없습니다.") },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                onDelete()
+                                showDeleteConfirm = false
+                            }
+                        ) {
+                            Text("삭제", color = Color.Red)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showDeleteConfirm = false }) {
+                            Text("취소")
+                        }
+                    }
+                )
             }
 
             // 스팸/광고 경고 표시 (말풍선 아래)
@@ -3690,6 +3754,7 @@ private fun PersonalMilestoneOverlay(
 /**
  * 관리자 패널 다이얼로그
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AdminPanelDialog(
     onlineUsers: List<EliteUser>,
@@ -3697,10 +3762,18 @@ private fun AdminPanelDialog(
     onKickUser: (EliteUser) -> Unit,
     onChangeUserRank: (EliteUser, EliteRank) -> Unit,
     onSendNotice: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    // 신고 관리
+    reports: List<Report> = emptyList(),
+    onHandleReport: (String, String, Boolean) -> Unit = { _, _, _ -> },
+    onDismissReport: (String) -> Unit = {}
 ) {
     var selectedUser by remember { mutableStateOf<EliteUser?>(null) }
     var showRankDialog by remember { mutableStateOf(false) }
+    var selectedTab by remember { mutableIntStateOf(0) }  // 0: 사용자, 1: 신고
+
+    // 대기 중인 신고 수
+    val pendingReportsCount = reports.count { it.status == ReportStatus.PENDING.name }
 
     // 계급 선택 다이얼로그
     if (showRankDialog && selectedUser != null) {
@@ -3735,8 +3808,58 @@ private fun AdminPanelDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 400.dp)
+                    .heightIn(max = 450.dp)
             ) {
+                // 탭 선택
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // 사용자 탭
+                    FilterChip(
+                        selected = selectedTab == 0,
+                        onClick = { selectedTab = 0 },
+                        label = { Text("사용자 (${onlineUsers.size})") },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = TossBlue.copy(alpha = 0.2f),
+                            selectedLabelColor = TossBlue
+                        )
+                    )
+                    // 신고 탭
+                    FilterChip(
+                        selected = selectedTab == 1,
+                        onClick = { selectedTab = 1 },
+                        label = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("신고")
+                                if (pendingReportsCount > 0) {
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .size(18.dp)
+                                            .clip(CircleShape)
+                                            .background(StatusRed),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = if (pendingReportsCount > 9) "9+" else pendingReportsCount.toString(),
+                                            fontSize = 10.sp,
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+                        },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = StatusRed.copy(alpha = 0.2f),
+                            selectedLabelColor = StatusRed
+                        )
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
                 // 공지 버튼
                 Button(
                     onClick = onSendNotice,
@@ -3749,38 +3872,84 @@ private fun AdminPanelDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                Text(
-                    text = "접속 중인 사용자 (${onlineUsers.size}명)",
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 14.sp,
-                    color = TextSecondary
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // 사용자 목록
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    items(onlineUsers.filter { it.userId != currentUserId }) { user ->
-                        AdminUserItem(
-                            user = user,
-                            onKick = { onKickUser(user) },
-                            onChangeRank = {
-                                selectedUser = user
-                                showRankDialog = true
-                            }
+                // 탭 내용
+                when (selectedTab) {
+                    0 -> {
+                        // 사용자 탭
+                        Text(
+                            text = "접속 중인 사용자",
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp,
+                            color = TextSecondary
                         )
-                    }
-                }
 
-                if (onlineUsers.filter { it.userId != currentUserId }.isEmpty()) {
-                    Text(
-                        text = "다른 사용자가 없습니다",
-                        fontSize = 14.sp,
-                        color = TextTertiary,
-                        modifier = Modifier.padding(vertical = 16.dp)
-                    )
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        LazyColumn(
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            items(onlineUsers.filter { it.userId != currentUserId }) { user ->
+                                AdminUserItem(
+                                    user = user,
+                                    onKick = { onKickUser(user) },
+                                    onChangeRank = {
+                                        selectedUser = user
+                                        showRankDialog = true
+                                    }
+                                )
+                            }
+                        }
+
+                        if (onlineUsers.filter { it.userId != currentUserId }.isEmpty()) {
+                            Text(
+                                text = "다른 사용자가 없습니다",
+                                fontSize = 14.sp,
+                                color = TextTertiary,
+                                modifier = Modifier.padding(vertical = 16.dp)
+                            )
+                        }
+                    }
+                    1 -> {
+                        // 신고 탭
+                        Text(
+                            text = "신고 목록",
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp,
+                            color = TextSecondary
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        if (reports.isEmpty()) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 32.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text("✅", fontSize = 40.sp)
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "신고가 없습니다",
+                                    fontSize = 14.sp,
+                                    color = TextTertiary
+                                )
+                            }
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                items(reports) { report ->
+                                    AdminReportItem(
+                                        report = report,
+                                        onDelete = { onHandleReport(report.id, report.messageId, true) },
+                                        onDismiss = { onDismissReport(report.id) }
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
         },
@@ -3790,6 +3959,141 @@ private fun AdminPanelDialog(
             }
         }
     )
+}
+
+@Composable
+private fun AdminReportItem(
+    report: Report,
+    onDelete: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val isPending = report.status == ReportStatus.PENDING.name
+    val dateFormat = remember { SimpleDateFormat("MM/dd HH:mm", Locale.getDefault()) }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isPending) StatusRed.copy(alpha = 0.05f) else BackgroundGray
+        ),
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp)
+        ) {
+            // 상태 및 시간
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(if (isPending) StatusRed else StatusGreen)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (isPending) "대기중" else "처리됨",
+                        fontSize = 11.sp,
+                        color = if (isPending) StatusRed else StatusGreen,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+                Text(
+                    text = dateFormat.format(Date(report.timestamp)),
+                    fontSize = 11.sp,
+                    color = TextTertiary
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // 신고 사유
+            Row {
+                Text(
+                    text = "사유: ",
+                    fontSize = 12.sp,
+                    color = TextSecondary
+                )
+                Text(
+                    text = report.reason,
+                    fontSize = 12.sp,
+                    color = TextPrimary,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // 신고 대상
+            Text(
+                text = "대상: ${report.reportedNickname}",
+                fontSize = 12.sp,
+                color = TextSecondary
+            )
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // 메시지 내용
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Color.Black.copy(alpha = 0.05f))
+                    .padding(8.dp)
+            ) {
+                Text(
+                    text = "\"${report.messageContent}\"",
+                    fontSize = 12.sp,
+                    color = TextPrimary,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // 신고자
+            Text(
+                text = "신고자: ${report.reporterNickname}",
+                fontSize = 11.sp,
+                color = TextTertiary
+            )
+
+            // 버튼 (대기중인 경우만)
+            if (isPending) {
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // 기각 버튼
+                    TextButton(
+                        onClick = onDismiss,
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                    ) {
+                        Text("기각", fontSize = 12.sp, color = TextSecondary)
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    // 삭제 버튼
+                    Button(
+                        onClick = onDelete,
+                        colors = ButtonDefaults.buttonColors(containerColor = StatusRed),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Text("메시지 삭제", fontSize = 12.sp)
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable

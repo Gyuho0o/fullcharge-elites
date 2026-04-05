@@ -208,7 +208,10 @@ class MainActivity : ComponentActivity() {
                         onAdminLogout = { viewModel.logoutAdmin() },
                         onKickUser = { userId, nickname -> viewModel.kickUser(userId, nickname) },
                         onChangeUserRank = { userId, nickname, rank -> viewModel.changeUserRank(userId, nickname, rank) },
-                        onSendAdminNotice = { message -> viewModel.sendAdminNotice(message) }
+                        onSendAdminNotice = { message -> viewModel.sendAdminNotice(message) },
+                        onDeleteMessage = { messageId -> viewModel.deleteMessage(messageId) },
+                        onHandleReport = { reportId, messageId, deleteMsg -> viewModel.handleReport(reportId, messageId, deleteMsg) },
+                        onDismissReport = { reportId -> viewModel.dismissReport(reportId) }
                     )
                     }
                 }
@@ -246,7 +249,10 @@ class MainActivity : ComponentActivity() {
         onAdminLogout: () -> Unit,
         onKickUser: (String, String) -> Unit,
         onChangeUserRank: (String, String, com.elites.fullcharge.data.EliteRank) -> Unit,
-        onSendAdminNotice: (String) -> Unit
+        onSendAdminNotice: (String) -> Unit,
+        onDeleteMessage: (String) -> Unit,
+        onHandleReport: (String, String, Boolean) -> Unit,
+        onDismissReport: (String) -> Unit
     ) {
         AnimatedContent(
             targetState = uiState.currentScreen,
@@ -333,7 +339,12 @@ class MainActivity : ComponentActivity() {
                         isAdminMode = uiState.isAdminMode,
                         onKickUser = onKickUser,
                         onChangeUserRank = onChangeUserRank,
-                        onSendAdminNotice = onSendAdminNotice
+                        onSendAdminNotice = onSendAdminNotice,
+                        onDeleteMessage = onDeleteMessage,
+                        // 신고 관리
+                        reports = uiState.reports,
+                        onHandleReport = onHandleReport,
+                        onDismissReport = onDismissReport
                     )
                 }
                 AppScreen.EXILE -> {
