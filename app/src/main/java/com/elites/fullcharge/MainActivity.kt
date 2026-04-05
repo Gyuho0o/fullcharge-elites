@@ -402,11 +402,17 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         viewModel.updateBatteryStatus()
+        viewModel.onAppForeground()  // 포그라운드 복귀 시 모니터링 재개
 
         // 업데이트 상태 재확인 (백그라운드에서 복귀 시)
         if (::inAppUpdateManager.isInitialized) {
             checkForAppUpdate()
         }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        viewModel.onAppBackground()  // 백그라운드 전환 시 모니터링 일시 중지
     }
 
     override fun onDestroy() {

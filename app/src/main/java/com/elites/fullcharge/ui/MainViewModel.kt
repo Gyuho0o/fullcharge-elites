@@ -1132,6 +1132,72 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // ========== 앱 라이프사이클 ==========
+
+    /**
+     * 앱이 백그라운드로 전환될 때 호출
+     * - 배터리 모니터링 일시 중지
+     * - 위험 카운트다운 일시 중지
+     */
+    fun onAppBackground() {
+        if (_uiState.value.isInChat) {
+            // 배터리 모니터링 일시 중지
+            batteryMonitorJob?.cancel()
+
+            // 위험 카운트다운 일시 중지
+            if (_uiState.value.isInDanger) {
+                dangerCountdownJob?.cancel()
+            }
+        }
+    }
+
+    /**
+     * 앱이 포그라운드로 복귀할 때 호출
+     * - 배터리 상태 재확인
+     * - 충전 중이면 위험 모드 해제
+     * - 배터리 모니터링 재개
+     */
+    fun onAppForeground() {
+        if (_uiState.value.isInChat) {
+            // 배터리 상태 즉시 업데이트
+            updateBatteryStatus()
+
+            val batteryState = _uiState.value.batteryState
+
+            // 충전 중이면 위험 모드 해제
+            if (batteryState.isCharging && _uiState.value.isInDanger) {
+                _uiState.update {
+                    it.copy(
+                        isInDanger = false,
+                        dangerCountdown = 0,
+                        dangerStartTime = 0L
+                    )
+                }
+            }
+            // 100%이고 충전 중이면 안전
+            else if (batteryState.level == 100 && batteryState.isCharging) {
+                _uiState.update {
+                    it.copy(
+                        isInDanger = false,
+                        dangerCountdown = 0,
+                        dangerStartTime = 0L
+                    )
+                }
+            }
+            // 위험 상태가 아니었는데 복귀 시 배터리가 100% 미만이고 충전 안 하면 위험 시작
+            else if (!_uiState.value.isInDanger && batteryState.level < 100 && !batteryState.isCharging) {
+                startDangerCountdown()
+            }
+            // 기존 위험 상태였으면 카운트다운 재시작
+            else if (_uiState.value.isInDanger) {
+                startDangerCountdown()
+            }
+
+            // 배터리 모니터링 재개
+            startBatteryMonitoring()
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
         sessionTimerJob?.cancel()
