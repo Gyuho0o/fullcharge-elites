@@ -19,6 +19,7 @@ class ChatRepository {
     private val usersRef: DatabaseReference = database.getReference("online_users")
     private val reportsRef: DatabaseReference = database.getReference("reports")
     private val allTimeRecordsRef: DatabaseReference = database.getReference("all_time_records")
+    private val tokensRef: DatabaseReference = database.getReference("fcm_tokens")
 
     // 최근 50개 메시지만 유지
     private val messageLimit = 50
@@ -515,6 +516,33 @@ class ChatRepository {
                 )
                 allTimeRecordsRef.child(userId).setValue(record.toMap()).await()
             }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    // ========== FCM 토큰 관리 ==========
+
+    /**
+     * FCM 토큰 저장/업데이트
+     */
+    suspend fun saveFcmToken(userId: String, token: String) {
+        try {
+            tokensRef.child(userId).setValue(mapOf(
+                "token" to token,
+                "updatedAt" to System.currentTimeMillis()
+            )).await()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    /**
+     * FCM 토큰 삭제 (로그아웃 시)
+     */
+    suspend fun removeFcmToken(userId: String) {
+        try {
+            tokensRef.child(userId).removeValue().await()
         } catch (e: Exception) {
             e.printStackTrace()
         }

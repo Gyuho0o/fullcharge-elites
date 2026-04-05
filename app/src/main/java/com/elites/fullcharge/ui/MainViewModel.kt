@@ -5,12 +5,15 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.elites.fullcharge.ElitesApplication
 import com.elites.fullcharge.data.*
+import com.elites.fullcharge.notification.EliteMessagingService
 import com.elites.fullcharge.util.ContentFilter
+import com.google.firebase.messaging.FirebaseMessaging
 import java.util.Calendar
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import java.util.UUID
 
 enum class AppScreen {
@@ -264,6 +267,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             // Firebase에 입장 등록
             chatRepository.joinChat(state.userId, state.nickname)
+
+            // FCM 토큰 등록
+            registerFcmToken(state.userId)
 
             // 입장 알림 시스템 메시지 전송
             chatRepository.sendSystemMessage("${state.nickname}님이 전우회에 합류했습니다")
@@ -715,6 +721,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 chatRepository.sendSystemMessage("${state.nickname}님이 퇴장했습니다")
             }
 
+            // FCM 토큰 삭제
+            unregisterFcmToken(state.userId)
+
             // Firebase에서 퇴장 처리
             chatRepository.leaveChat(state.userId)
 
@@ -1129,6 +1138,39 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             chatRepository.sendSystemMessage("[공지] $message")
+        }
+    }
+
+    // ========== FCM 토큰 관리 ==========
+
+    /**
+     * FCM 토큰 등록
+     */
+    private suspend fun registerFcmToken(userId: String) {
+        try {
+            val token = FirebaseMessaging.getInstance().token.await()
+            chatRepository.saveFcmToken(userId, token)
+
+            // 토큰 갱신 콜백 설정
+            EliteMessagingService.onTokenRefresh = { newToken ->
+                viewModelScope.launch {
+                    chatRepository.saveFcmToken(userId, newToken)
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    /**
+     * FCM 토큰 삭제
+     */
+    private suspend fun unregisterFcmToken(userId: String) {
+        try {
+            chatRepository.removeFcmToken(userId)
+            EliteMessagingService.onTokenRefresh = null
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
