@@ -18,9 +18,10 @@ import kotlinx.coroutines.launch
 class EliteMessagingService : FirebaseMessagingService() {
 
     companion object {
-        const val CHANNEL_ID = "elite_chat_channel"
+        // 채널 ID 변경 (기존 캐시된 설정 무효화)
+        const val CHANNEL_ID = "elite_chat_silent_v2"
         const val CHANNEL_NAME = "채팅 알림"
-        const val CHANNEL_DESCRIPTION = "새 메시지 알림"
+        const val CHANNEL_DESCRIPTION = "새 메시지 알림 (무음)"
 
         // 토큰 변경 콜백 (앱에서 설정)
         var onTokenRefresh: ((String) -> Unit)? = null

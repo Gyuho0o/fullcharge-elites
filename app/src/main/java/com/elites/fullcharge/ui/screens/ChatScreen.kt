@@ -317,20 +317,19 @@ fun ChatScreen(
             }
 
             // 채팅 영역 (키보드에 반응하는 영역)
-            Column(
+            Box(
                 modifier = Modifier
                     .weight(1f)
                     .imePadding()
             ) {
-                // 채팅 메시지 목록
+                // 채팅 메시지 목록 (입력창 높이만큼 하단 패딩)
                 LazyColumn(
                     state = listState,
                     modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
+                        .fillMaxSize()
                         .padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
-                    contentPadding = PaddingValues(top = 16.dp, bottom = 8.dp)
+                    contentPadding = PaddingValues(top = 16.dp, bottom = 100.dp)
                 ) {
                     items(messages, key = { it.id }) { message ->
                         when {
@@ -374,35 +373,43 @@ fun ChatScreen(
                     }
                 }
 
-                // 답장 미리보기 (입력창 위)
-                AnimatedVisibility(
-                    visible = replyingTo != null,
-                    enter = expandVertically() + fadeIn(),
-                    exit = shrinkVertically() + fadeOut()
+                // 하단 입력 영역 (Box 하단에 고정)
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .background(BackgroundWhite)
                 ) {
-                    replyingTo?.let { replyMessage ->
-                        ReplyPreviewBar(
-                            replyingTo = replyMessage,
-                            onClear = onClearReply
-                        )
-                    }
-                }
-
-                // 메시지 입력창 (네비게이션 바 위로)
-                MessageInputBar(
-                    value = messageInput,
-                    onValueChange = { messageInput = it },
-                    onSend = {
-                        if (messageInput.isNotBlank()) {
-                            onSendMessage(messageInput.trim())
-                            messageInput = ""
-                            messageSentTrigger++
+                    // 답장 미리보기 (입력창 위)
+                    AnimatedVisibility(
+                        visible = replyingTo != null,
+                        enter = expandVertically() + fadeIn(),
+                        exit = shrinkVertically() + fadeOut()
+                    ) {
+                        replyingTo?.let { replyMessage ->
+                            ReplyPreviewBar(
+                                replyingTo = replyMessage,
+                                onClear = onClearReply
+                            )
                         }
-                    },
-                    onPollClick = { showPollDialog = true },
-                    onlineUsers = onlineUsers,
-                    modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars)
-                )
+                    }
+
+                    // 메시지 입력창 (네비게이션 바 위로)
+                    MessageInputBar(
+                        value = messageInput,
+                        onValueChange = { messageInput = it },
+                        onSend = {
+                            if (messageInput.isNotBlank()) {
+                                onSendMessage(messageInput.trim())
+                                messageInput = ""
+                                messageSentTrigger++
+                            }
+                        },
+                        onPollClick = { showPollDialog = true },
+                        onlineUsers = onlineUsers,
+                        modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars)
+                    )
+                }
             }
         }
 
