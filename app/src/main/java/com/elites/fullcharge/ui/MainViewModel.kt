@@ -438,10 +438,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                     _uiState.update { it.copy(sessionDuration = duration) }
 
-                    // 승급 이벤트 발생 (다른 사용자에게 보이는 알림)
+                    // 승급 이벤트 발생
                     if (previousRank != null && currentRank != previousRank && currentRank.ordinal > previousRank!!.ordinal) {
                         val nickname = _uiState.value.nickname
+                        // 로컬 UI 이벤트 (축하 모달)
                         emitChatEvent(ChatEvent.UserRankUp(nickname, currentRank))
+                        // 다른 사용자에게 보이는 시스템 메시지
+                        viewModelScope.launch {
+                            chatRepository.sendSystemMessage("${nickname}님이 ${currentRank.koreanName}(으)로 진급했습니다!")
+                        }
                     }
                     previousRank = currentRank
 
