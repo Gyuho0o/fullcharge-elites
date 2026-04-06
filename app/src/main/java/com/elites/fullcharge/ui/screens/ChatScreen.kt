@@ -210,15 +210,14 @@ fun ChatScreen(
         }
     }
 
-    // 키보드가 열릴 때만 최신 메시지로 스크롤 (닫힐 때는 현재 위치 유지)
+    // 키보드 상태 변경 시 최신 메시지로 스크롤
     LaunchedEffect(isKeyboardVisible) {
-        if (isKeyboardVisible && messages.isNotEmpty()) {
-            // 약간의 딜레이 후 스크롤 (키보드 애니메이션 완료 대기)
-            delay(150)
-            // 마지막 아이템이 화면 하단에 완전히 보이도록 충분한 offset 적용
+        if (messages.isNotEmpty()) {
+            // 키보드 닫힐 때는 레이아웃 재조정 시간이 더 필요
+            delay(if (isKeyboardVisible) 150L else 300L)
             listState.animateScrollToItem(
                 index = messages.size - 1,
-                scrollOffset = Int.MAX_VALUE  // 아이템 끝까지 스크롤
+                scrollOffset = Int.MAX_VALUE
             )
         }
     }
