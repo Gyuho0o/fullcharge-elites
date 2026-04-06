@@ -27,6 +27,7 @@ class BatteryMonitorService : Service() {
     private var userId: String = ""
     private var nickname: String = ""
     private var isGracefulStop: Boolean = false  // 정상 종료 여부
+    private var leaveMessageSent: Boolean = false  // 퇴장 메시지 전송 여부 (중복 방지)
 
     private val _shouldExile = MutableStateFlow(false)
     val shouldExile: StateFlow<Boolean> = _shouldExile
@@ -177,7 +178,9 @@ class BatteryMonitorService : Service() {
      * 서비스 종료 시 퇴장 메시지 전송 (동기 처리)
      */
     private fun sendLeaveMessage() {
-        if (userId.isBlank() || nickname.isBlank()) return
+        // 이미 전송했거나 정보가 없으면 무시
+        if (leaveMessageSent || userId.isBlank() || nickname.isBlank()) return
+        leaveMessageSent = true  // 중복 전송 방지
 
         try {
             // 동기 처리로 앱 종료 전에 완료되도록 함
@@ -223,9 +226,11 @@ class BatteryMonitorService : Service() {
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
-        // 앱이 최근 앱 목록에서 제거될 때 퇴장 처리
-        // onDestroy에서도 호출되므로 여기서는 플래그만 설정
-        isGracefulStop = false  // 강제 종료이므로 퇴장 메시지 필요
+        // 앱이 최근 앱 목록에서 제거될 때 즉시 퇴장 메시지 전송
+        // onDestroy가 호출되지 않을 수 있으므로 여기서 직접 전송
+        if (!isGracefulStop) {
+            sendLeaveMessage()
+        }
     }
 
     companion object {
