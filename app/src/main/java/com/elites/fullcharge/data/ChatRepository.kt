@@ -181,13 +181,9 @@ class ChatRepository {
         messagesRef.child(key).setValue(message.toMap()).await()
     }
 
-    // 1분(60초) 이내 활동한 사용자만 온라인으로 간주
-    private val onlineThresholdMs = 60_000L
-
     fun getOnlineUsers(): Flow<List<EliteUser>> = callbackFlow {
         val listener = object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
-                val currentTime = System.currentTimeMillis()
                 val users = snapshot.children.mapNotNull { child ->
                     try {
                         val userId = child.child("userId").getValue(String::class.java) ?: ""
@@ -201,8 +197,8 @@ class ChatRepository {
                         null
                     }
                 }.filter { user ->
-                    // isOnline이고 1분 이내 활동한 사용자만 (관리자 제외)
-                    user.isOnline && !user.isAdmin && (currentTime - user.lastActiveTime) < onlineThresholdMs
+                    // isOnline인 사용자만 (관리자 제외) - onDisconnect로 오프라인 상태 자동 관리됨
+                    user.isOnline && !user.isAdmin
                 }
                 trySend(users)
             }
@@ -326,13 +322,12 @@ class ChatRepository {
     fun getOnlineUserCount(): Flow<Int> = callbackFlow {
         val listener = object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
-                val currentTime = System.currentTimeMillis()
                 val count = snapshot.children.count { child ->
                     try {
                         val isOnline = child.child("isOnline").value == true
                         val isAdmin = child.child("isAdmin").value == true
-                        val lastActiveTime = child.child("lastActiveTime").getValue(Long::class.java) ?: 0L
-                        isOnline && !isAdmin && (currentTime - lastActiveTime) < onlineThresholdMs
+                        // isOnline인 사용자만 (관리자 제외) - onDisconnect로 오프라인 상태 자동 관리됨
+                        isOnline && !isAdmin
                     } catch (e: Exception) {
                         false
                     }
