@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -140,6 +141,7 @@ fun ChatScreen(
     modifier: Modifier = Modifier
 ) {
     var messageInput by remember { mutableStateOf("") }
+    var inputBarHeightPx by remember { mutableStateOf(0) }
     val listState = rememberLazyListState()
     var showLeaderboard by remember { mutableStateOf(false) }
     var showPromotionCountdown by remember { mutableStateOf(false) }
@@ -317,6 +319,9 @@ fun ChatScreen(
             }
 
             // 채팅 영역 (키보드에 반응하는 영역)
+            val density = LocalDensity.current
+            val inputBarHeightDp = with(density) { inputBarHeightPx.toDp() }
+
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -329,7 +334,7 @@ fun ChatScreen(
                         .fillMaxSize()
                         .padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
-                    contentPadding = PaddingValues(top = 16.dp, bottom = 100.dp)
+                    contentPadding = PaddingValues(top = 16.dp, bottom = inputBarHeightDp + 16.dp)
                 ) {
                     items(messages, key = { it.id }) { message ->
                         when {
@@ -379,6 +384,9 @@ fun ChatScreen(
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                         .background(BackgroundWhite)
+                        .onSizeChanged { size ->
+                            inputBarHeightPx = size.height
+                        }
                 ) {
                     // 답장 미리보기 (입력창 위)
                     AnimatedVisibility(
