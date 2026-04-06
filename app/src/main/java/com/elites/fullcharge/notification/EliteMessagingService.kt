@@ -62,7 +62,7 @@ class EliteMessagingService : FirebaseMessagingService() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // 알림 빌드
+        // 알림 빌드 (효과음 없이 진동만)
         val notificationBuilder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle(title)
@@ -71,6 +71,8 @@ class EliteMessagingService : FirebaseMessagingService() {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setContentIntent(pendingIntent)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .setSound(null)
+            .setVibrate(longArrayOf(0, 200))
 
         // 알림 표시 (ID를 시간 기반으로 해서 여러 알림 표시 가능)
         val notificationId = System.currentTimeMillis().toInt()
@@ -87,6 +89,8 @@ class EliteMessagingService : FirebaseMessagingService() {
                 description = CHANNEL_DESCRIPTION
                 enableVibration(true)
                 enableLights(true)
+                // 효과음 비활성화 (진동만 사용)
+                setSound(null, null)
             }
             notificationManager.createNotificationChannel(channel)
         }
