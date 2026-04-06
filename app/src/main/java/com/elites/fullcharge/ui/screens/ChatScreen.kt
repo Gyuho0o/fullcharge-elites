@@ -330,7 +330,7 @@ fun ChatScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
-                    contentPadding = PaddingValues(top = 16.dp, bottom = 24.dp)
+                    contentPadding = PaddingValues(top = 16.dp, bottom = 80.dp)
                 ) {
                     items(messages, key = { it.id }) { message ->
                         when {
