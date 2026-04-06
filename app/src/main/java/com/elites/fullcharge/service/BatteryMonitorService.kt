@@ -26,16 +26,13 @@ class BatteryMonitorService : Service() {
     private var sessionStartTime: Long = 0L
     private var userId: String = ""
     private var nickname: String = ""
-    private var isGracefulStop: Boolean = false  // 정상 종료 여부
-    private var leaveMessageSent: Boolean = false  // 퇴장 메시지 전송 여부 (중복 방지)
 
     private val _shouldExile = MutableStateFlow(false)
     val shouldExile: StateFlow<Boolean> = _shouldExile
 
-    // Firebase 참조
+    // Firebase 참조 (활동 시간 업데이트용)
     private val database: FirebaseDatabase by lazy { FirebaseDatabase.getInstance() }
     private val usersRef by lazy { database.getReference("online_users") }
-    private val messagesRef by lazy { database.getReference("messages") }
 
     private val batteryReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -68,7 +65,6 @@ class BatteryMonitorService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         // 정상 종료 요청 처리
         if (intent?.action == ACTION_GRACEFUL_STOP) {
-            isGracefulStop = true
             stopSelf()
             return START_NOT_STICKY
         }
@@ -174,47 +170,10 @@ class BatteryMonitorService : Service() {
         }
     }
 
-    /**
-     * 서비스 종료 시 퇴장 메시지 전송 (동기 처리)
-     */
-    private fun sendLeaveMessage() {
-        // 이미 전송했거나 정보가 없으면 무시
-        if (leaveMessageSent || userId.isBlank() || nickname.isBlank()) return
-        leaveMessageSent = true  // 중복 전송 방지
-
-        try {
-            // 동기 처리로 앱 종료 전에 완료되도록 함
-            kotlinx.coroutines.runBlocking {
-                withContext(Dispatchers.IO) {
-                    // 퇴장 시스템 메시지 전송
-                    val key = messagesRef.push().key ?: return@withContext
-                    val message = mapOf(
-                        "id" to key,
-                        "userId" to "SYSTEM",
-                        "nickname" to "시스템",
-                        "message" to "${nickname}님이 전우회를 배신했습니다",
-                        "timestamp" to System.currentTimeMillis(),
-                        "rank" to "TRAINEE",
-                        "isSystemMessage" to true
-                    )
-                    messagesRef.child(key).setValue(message).await()
-
-                    // 온라인 상태 업데이트
-                    usersRef.child(userId).child("isOnline").setValue(false).await()
-                }
-            }
-        } catch (e: Exception) {
-            // 에러 무시
-        }
-    }
-
     override fun onDestroy() {
         super.onDestroy()
-
-        // 정상 종료가 아닌 경우에만 퇴장 메시지 전송
-        if (!isGracefulStop) {
-            sendLeaveMessage()
-        }
+        // 퇴장 메시지는 Firebase onDisconnect가 자동으로 처리
+        // (ChatRepository.joinChat에서 설정됨)
 
         try {
             unregisterReceiver(batteryReceiver)
@@ -226,11 +185,7 @@ class BatteryMonitorService : Service() {
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
-        // 앱이 최근 앱 목록에서 제거될 때 즉시 퇴장 메시지 전송
-        // onDestroy가 호출되지 않을 수 있으므로 여기서 직접 전송
-        if (!isGracefulStop) {
-            sendLeaveMessage()
-        }
+        // 퇴장 메시지는 Firebase onDisconnect가 자동으로 처리
     }
 
     companion object {

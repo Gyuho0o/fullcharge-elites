@@ -217,6 +217,9 @@ class ChatRepository {
         }
     }
 
+    // 연결 끊김 시 전송할 퇴장 메시지 키 (취소용)
+    private var disconnectMessageKey: String? = null
+
     suspend fun joinChat(userId: String, nickname: String, isAdmin: Boolean = false) {
         val user = EliteUser(
             userId = userId,
@@ -227,9 +230,67 @@ class ChatRepository {
             isAdmin = isAdmin
         )
         usersRef.child(userId).setValue(user).await()
+
+        // 관리자가 아닌 경우에만 연결 끊김 핸들러 설정
+        if (!isAdmin) {
+            setupDisconnectHandlers(userId, nickname)
+        }
+    }
+
+    /**
+     * Firebase 연결 끊김 시 자동 실행될 핸들러 설정
+     * - 서버 측에서 연결 끊김을 감지하여 실행
+     * - 앱 강제 종료, 네트워크 끊김 등 모든 상황에서 동작
+     */
+    private suspend fun setupDisconnectHandlers(userId: String, nickname: String) {
+        // 1. 온라인 상태를 false로 설정
+        usersRef.child(userId).child("isOnline")
+            .onDisconnect()
+            .setValue(false)
+            .await()
+
+        // 2. 퇴장 메시지 설정 (미리 키 생성)
+        val messageKey = messagesRef.push().key ?: return
+        disconnectMessageKey = messageKey
+
+        val leaveMessage = mapOf(
+            "id" to messageKey,
+            "userId" to "SYSTEM",
+            "nickname" to "시스템",
+            "message" to "${nickname}님이 전우회를 배신했습니다",
+            "timestamp" to com.google.firebase.database.ServerValue.TIMESTAMP,
+            "rank" to "TRAINEE",
+            "isSystemMessage" to true
+        )
+
+        messagesRef.child(messageKey)
+            .onDisconnect()
+            .setValue(leaveMessage)
+            .await()
+    }
+
+    /**
+     * 정상 종료 시 연결 끊김 핸들러 취소
+     */
+    suspend fun cancelDisconnectHandlers(userId: String) {
+        // onDisconnect 핸들러 취소
+        usersRef.child(userId).child("isOnline")
+            .onDisconnect()
+            .cancel()
+            .await()
+
+        disconnectMessageKey?.let { key ->
+            messagesRef.child(key)
+                .onDisconnect()
+                .cancel()
+                .await()
+        }
+        disconnectMessageKey = null
     }
 
     suspend fun leaveChat(userId: String) {
+        // 정상 종료 시 onDisconnect 핸들러 취소
+        cancelDisconnectHandlers(userId)
         usersRef.child(userId).child("isOnline").setValue(false).await()
     }
 
