@@ -1386,12 +1386,13 @@ private fun ChatMessageItem(
             // 롱프레스 이모지 선택 버블 (Popup)
             if (showReactionPicker) {
                 Popup(
-                    alignment = if (isOwnMessage) Alignment.TopEnd else Alignment.TopStart,
+                    alignment = Alignment.TopCenter,
                     offset = IntOffset(0, -120),
                     onDismissRequest = { showReactionPicker = false }
                 ) {
                     Row(
                         modifier = Modifier
+                            .wrapContentWidth()
                             .shadow(8.dp, RoundedCornerShape(24.dp))
                             .clip(RoundedCornerShape(24.dp))
                             .background(Color.White)
