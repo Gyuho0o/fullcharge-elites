@@ -471,8 +471,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         activityUpdateJob?.cancel()
         activityUpdateJob = viewModelScope.launch {
             while (_uiState.value.isInChat) {
+                val state = _uiState.value
+
                 // 30초마다 활동 시간 업데이트
-                chatRepository.updateUserActivity(_uiState.value.userId)
+                chatRepository.updateUserActivity(state.userId)
+
+                // 역대 기록도 주기적으로 업데이트 (앱 강제 종료 대비)
+                if (!state.isAdminMode && state.sessionDuration > 0) {
+                    chatRepository.updateAllTimeRecord(
+                        userId = state.userId,
+                        nickname = state.nickname,
+                        durationMillis = state.sessionDuration
+                    )
+                }
+
                 delay(30_000)
             }
         }
