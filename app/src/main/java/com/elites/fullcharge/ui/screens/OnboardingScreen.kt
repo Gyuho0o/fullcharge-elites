@@ -21,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.elites.fullcharge.ui.components.BackgroundLightning
 import com.elites.fullcharge.ui.theme.*
 import kotlinx.coroutines.launch
 import kotlin.math.sin
@@ -60,11 +61,15 @@ private val onboardingPages = listOf(
 fun OnboardingScreen(
     onComplete: () -> Unit,
     isCharging: Boolean = false,
+    isElite: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val pagerState = rememberPagerState(pageCount = { onboardingPages.size })
     val coroutineScope = rememberCoroutineScope()
     val isLastPage = pagerState.currentPage == onboardingPages.lastIndex
+
+    // 100%이거나 충전 중이면 효과 표시
+    val showEffects = isElite || isCharging
 
     Box(
         modifier = modifier
@@ -73,12 +78,17 @@ fun OnboardingScreen(
             .windowInsetsPadding(WindowInsets.statusBars)
             .windowInsetsPadding(WindowInsets.navigationBars)
     ) {
-        // 충전 중일 때 파티클 효과
-        if (isCharging) {
+        // 파티클 효과
+        if (showEffects) {
             FloatingParticles(
-                particleCount = 25,
-                speedMultiplier = 0.8f
+                particleCount = if (isElite) 50 else 25,
+                speedMultiplier = if (isElite) 1.2f else 0.8f
             )
+        }
+
+        // 100%일 때 번개 효과
+        if (isElite) {
+            BackgroundLightning(enabled = true)
         }
 
         Column(

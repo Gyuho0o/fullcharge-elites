@@ -148,7 +148,8 @@ class MainActivity : ComponentActivity() {
                     if (!uiState.onboardingCompleted) {
                         OnboardingScreen(
                             onComplete = { viewModel.completeOnboarding() },
-                            isCharging = uiState.batteryState.isCharging
+                            isCharging = uiState.batteryState.isCharging,
+                            isElite = uiState.batteryState.isElite
                         )
                     } else {
                         MainContent(
