@@ -29,6 +29,7 @@
     <color name="toss_blue_dark">#1B64DA</color>
     <color name="toss_blue_light">#5CA0FF</color>
     <color name="icon_background">#0A1628</color>
+    <color name="splash_blue">#0065FF</color>
 
     <!-- Chat Colors -->
     <color name="chat_bubble_self">#2D2D2D</color>
