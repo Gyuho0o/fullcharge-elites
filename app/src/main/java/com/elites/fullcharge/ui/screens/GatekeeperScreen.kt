@@ -190,17 +190,17 @@ private fun HeaderSection(
         // 타이틀
         Text(
             text = "완충 전우회",
-            fontSize = 24.sp,
+            fontSize = 32.sp,
             fontWeight = FontWeight.Bold,
             color = if (isAdminMode) StatusRed else TossBlue
         )
 
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(6.dp))
 
         // 서브타이틀
         Text(
             text = if (isAdminMode) "관리자 모드" else "100% 완충된 자만이 입장 가능",
-            fontSize = 14.sp,
+            fontSize = 16.sp,
             fontWeight = FontWeight.Medium,
             color = if (isAdminMode) StatusRed else TextSecondary
         )
@@ -265,7 +265,7 @@ private fun ImprovedBatteryIndicator(
         modifier = Modifier.scale(pulseScale)
     ) {
         // 메인 원형 인디케이터
-        Canvas(modifier = Modifier.size(220.dp)) {
+        Canvas(modifier = Modifier.size(260.dp)) {
             val strokeWidth = 16f
             val radius = (size.minDimension - strokeWidth) / 2
             val center = Offset(size.width / 2, size.height / 2)
@@ -351,7 +351,7 @@ private fun ImprovedBatteryIndicator(
         ) {
             Text(
                 text = "$batteryLevel%",
-                fontSize = 44.sp,
+                fontSize = 52.sp,
                 fontWeight = FontWeight.Bold,
                 color = if (isElite) TossBlue else TextPrimary
             )
@@ -362,7 +362,7 @@ private fun ImprovedBatteryIndicator(
                     isCharging -> "충전 중"
                     else -> "충전 필요"
                 },
-                fontSize = 14.sp,
+                fontSize = 16.sp,
                 fontWeight = FontWeight.Medium,
                 color = if (isElite) TossBlue else TextSecondary
             )
