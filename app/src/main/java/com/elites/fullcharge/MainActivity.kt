@@ -147,7 +147,8 @@ class MainActivity : ComponentActivity() {
                     // 온보딩 완료 여부에 따라 화면 분기
                     if (!uiState.onboardingCompleted) {
                         OnboardingScreen(
-                            onComplete = { viewModel.completeOnboarding() }
+                            onComplete = { viewModel.completeOnboarding() },
+                            isCharging = uiState.batteryState.isCharging
                         )
                     } else {
                         MainContent(

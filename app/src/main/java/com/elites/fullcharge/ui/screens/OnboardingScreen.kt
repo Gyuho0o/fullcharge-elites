@@ -1,6 +1,7 @@
 package com.elites.fullcharge.ui.screens
 
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -14,12 +15,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.elites.fullcharge.ui.theme.*
 import kotlinx.coroutines.launch
+import kotlin.math.sin
+import kotlin.random.Random
 
 data class OnboardingPage(
     val emoji: String,
@@ -54,6 +59,7 @@ private val onboardingPages = listOf(
 @Composable
 fun OnboardingScreen(
     onComplete: () -> Unit,
+    isCharging: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val pagerState = rememberPagerState(pageCount = { onboardingPages.size })
@@ -67,6 +73,14 @@ fun OnboardingScreen(
             .windowInsetsPadding(WindowInsets.statusBars)
             .windowInsetsPadding(WindowInsets.navigationBars)
     ) {
+        // 충전 중일 때 파티클 효과
+        if (isCharging) {
+            FloatingParticles(
+                particleCount = 25,
+                speedMultiplier = 0.8f
+            )
+        }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -202,5 +216,88 @@ private fun OnboardingPageContent(
             textAlign = TextAlign.Center,
             lineHeight = 24.sp
         )
+    }
+}
+
+@Composable
+private fun FloatingParticles(
+    particleCount: Int = 25,
+    speedMultiplier: Float = 0.8f
+) {
+    data class Particle(
+        val id: Int,
+        var x: Float,
+        var y: Float,
+        val size: Float,
+        val speed: Float,
+        val alpha: Float,
+        val wobbleOffset: Float,
+        val wobbleSpeed: Float
+    )
+
+    var particles by remember(particleCount) {
+        mutableStateOf(
+            List(particleCount) { index ->
+                Particle(
+                    id = index,
+                    x = Random.nextFloat(),
+                    y = Random.nextFloat(),
+                    size = Random.nextFloat() * 5f + 2f,
+                    speed = (Random.nextFloat() * 0.0015f + 0.0008f) * speedMultiplier,
+                    alpha = Random.nextFloat() * 0.35f + 0.1f,
+                    wobbleOffset = Random.nextFloat() * 100f,
+                    wobbleSpeed = Random.nextFloat() * 0.04f + 0.02f
+                )
+            }
+        )
+    }
+
+    val infiniteTransition = rememberInfiniteTransition(label = "particles")
+    val time by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 100f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(12000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "time"
+    )
+
+    LaunchedEffect(time) {
+        particles = particles.map { p ->
+            val newY = p.y - p.speed
+            val wobble = sin((time + p.wobbleOffset) * p.wobbleSpeed) * 0.0015f
+            val newX = p.x + wobble
+
+            if (newY < -0.05f) {
+                p.copy(
+                    x = Random.nextFloat(),
+                    y = 1.05f,
+                    alpha = Random.nextFloat() * 0.35f + 0.1f
+                )
+            } else {
+                p.copy(x = newX.coerceIn(0f, 1f), y = newY)
+            }
+        }
+    }
+
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        particles.forEach { p ->
+            drawCircle(
+                color = TossBlue.copy(alpha = p.alpha * 0.3f),
+                radius = p.size * 2.5f,
+                center = Offset(p.x * size.width, p.y * size.height)
+            )
+            drawCircle(
+                color = TossBlue.copy(alpha = p.alpha),
+                radius = p.size,
+                center = Offset(p.x * size.width, p.y * size.height)
+            )
+            drawCircle(
+                color = Color.White.copy(alpha = p.alpha * 0.6f),
+                radius = p.size * 0.35f,
+                center = Offset(p.x * size.width, p.y * size.height)
+            )
+        }
     }
 }
