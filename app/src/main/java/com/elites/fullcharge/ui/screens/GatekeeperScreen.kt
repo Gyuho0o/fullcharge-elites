@@ -131,8 +131,6 @@ fun GatekeeperScreen(
             // 상단 헤더 영역
             HeaderSection(
                 isAdminMode = isAdminMode,
-                isElite = isElite,
-                onlineUserCount = onlineUserCount,
                 onSecretTap = {
                     val currentTime = System.currentTimeMillis()
                     if (currentTime - lastTapTime < 2000) {
@@ -179,8 +177,6 @@ fun GatekeeperScreen(
 @Composable
 private fun HeaderSection(
     isAdminMode: Boolean,
-    isElite: Boolean,
-    onlineUserCount: Int,
     onSecretTap: () -> Unit
 ) {
     Column(
@@ -193,51 +189,21 @@ private fun HeaderSection(
     ) {
         // 타이틀
         Text(
-            text = if (isAdminMode) "완충 전우회" else "완충 전우회",
+            text = "완충 전우회",
             fontSize = 24.sp,
             fontWeight = FontWeight.Bold,
-            color = if (isAdminMode) StatusRed else TextPrimary
+            color = if (isAdminMode) StatusRed else TossBlue
         )
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(4.dp))
 
-        // 접속자 수 칩
-        Surface(
-            shape = RoundedCornerShape(20.dp),
-            color = if (isElite) TossBlue.copy(alpha = 0.1f) else BackgroundGray
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                // 온라인 표시 점
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .background(
-                            color = if (isAdminMode) StatusRed else StatusGreen,
-                            shape = CircleShape
-                        )
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                AnimatedContent(
-                    targetState = onlineUserCount,
-                    transitionSpec = {
-                        fadeIn(animationSpec = tween(300)) togetherWith
-                                fadeOut(animationSpec = tween(300))
-                    },
-                    label = "userCount"
-                ) { count ->
-                    Text(
-                        text = if (isAdminMode) "관리자 모드" else "${count}명 접속 중",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = if (isAdminMode) StatusRed else TextSecondary
-                    )
-                }
-            }
-        }
+        // 서브타이틀
+        Text(
+            text = if (isAdminMode) "관리자 모드" else "100% 완충된 자만이 입장 가능",
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+            color = if (isAdminMode) StatusRed else TextSecondary
+        )
     }
 }
 
@@ -255,13 +221,13 @@ private fun ImprovedBatteryIndicator(
 
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
 
-    // 100%일 때 빠른 펄스 효과
+    // 펄스 효과 (줄임)
     val pulseScale by infiniteTransition.animateFloat(
         initialValue = 1f,
-        targetValue = if (isElite) 1.05f else 1.02f,
+        targetValue = if (isElite) 1.02f else 1.01f,
         animationSpec = infiniteRepeatable(
             animation = tween(
-                durationMillis = if (isElite) 450 else 1500,
+                durationMillis = if (isElite) 800 else 1500,
                 easing = FastOutSlowInEasing
             ),
             repeatMode = RepeatMode.Reverse
@@ -478,8 +444,7 @@ private fun EliteWelcomeContent(
             label = "userCount"
         ) { count ->
             Text(
-                text = if (count > 0) "현재 ${count}명의 전우회원이 함께하고 있어요"
-                       else "첫 번째 전우회원이 되어보세요",
+                text = "현재 ${count}명의 전우회원이 대화 중",
                 fontSize = 14.sp,
                 color = TextSecondary,
                 textAlign = TextAlign.Center
@@ -495,7 +460,7 @@ private fun EliteWelcomeContent(
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(
-                text = "99%가 되면 10초 카운트다운이 시작돼요",
+                text = "99%가 되면 10초 카운트다운 시작! 배신은 죄악!",
                 fontSize = 13.sp,
                 color = StatusRed,
                 textAlign = TextAlign.Center,
@@ -549,8 +514,7 @@ private fun UnworthyContent(
             label = "userCount"
         ) { count ->
             Text(
-                text = if (count > 0) "현재 ${count}명의 전우회원이 함께하고 있어요"
-                       else "첫 번째 전우회원이 되어보세요",
+                text = "현재 ${count}명의 전우회원이 대화 중",
                 fontSize = 14.sp,
                 color = TextSecondary,
                 textAlign = TextAlign.Center
