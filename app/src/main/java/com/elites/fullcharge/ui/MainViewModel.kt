@@ -87,6 +87,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var activityUpdateJob: Job? = null
     private var timeEventJob: Job? = null
     private var reportsObserverJob: Job? = null
+    private var connectionMonitorJob: Job? = null
 
     // 시간 기반 이벤트 추적
     private var lastCheckedHour = -1
@@ -99,7 +100,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val recentMessageTimes = mutableListOf<Long>()  // 시간당 제한용
 
     init {
-        // 온보딩은 매번 앱 시작 시 표시 (onboardingCompleted = false가 기본값)
+        // 온보딩 완료 상태 로드 (최초 1회만 표시)
+        viewModelScope.launch {
+            preferences.onboardingCompleted.collect { completed ->
+                _uiState.update { it.copy(onboardingCompleted = completed) }
+            }
+        }
 
         // 해금된 업적 관찰
         viewModelScope.launch {
@@ -298,6 +304,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             // 시간 기반 이벤트 모니터링 시작
             startTimeEventMonitoring()
 
+            // Firebase 연결 상태 모니터링 (재연결 시 핸들러 재설정)
+            startConnectionMonitoring()
+
             // 백그라운드 서비스 시작 (온라인 상태 유지)
             startBackgroundService(startTime)
         }
@@ -355,6 +364,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             // 시간 기반 이벤트 모니터링 시작
             startTimeEventMonitoring()
+
+            // Firebase 연결 상태 모니터링 (재연결 시 핸들러 재설정)
+            startConnectionMonitoring()
 
             // 백그라운드 서비스 시작 (온라인 상태 유지)
             startBackgroundService(adjustedStartTime)
@@ -491,6 +503,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 delay(30_000)
+            }
+        }
+    }
+
+    /**
+     * Firebase 연결 상태 모니터링
+     * 네트워크 끊김 후 재연결 시 onDisconnect 핸들러 재설정
+     */
+    private fun startConnectionMonitoring() {
+        connectionMonitorJob?.cancel()
+        connectionMonitorJob = viewModelScope.launch {
+            var wasConnected = true  // 초기 상태는 연결됨으로 가정
+
+            chatRepository.getConnectionState().collect { isConnected ->
+                if (isConnected && !wasConnected && _uiState.value.isInChat) {
+                    // 재연결됨! onDisconnect 핸들러 재설정
+                    chatRepository.resetDisconnectHandlersOnReconnect()
+                }
+                wasConnected = isConnected
             }
         }
     }
@@ -685,6 +716,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             activityUpdateJob?.cancel()
             timeEventJob?.cancel()
             reportsObserverJob?.cancel()
+            connectionMonitorJob?.cancel()
 
             // 백그라운드 서비스 종료 (퇴장 메시지는 이미 전송됨)
             stopBackgroundService()
@@ -755,6 +787,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             activityUpdateJob?.cancel()
             timeEventJob?.cancel()
             reportsObserverJob?.cancel()
+            connectionMonitorJob?.cancel()
 
             // 백그라운드 서비스 종료 (정상 종료이므로 퇴장 메시지 없음)
             stopBackgroundServiceGracefully()
@@ -784,8 +817,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun completeOnboarding() {
-        // 로컬 상태만 업데이트 (매번 앱 시작 시 온보딩 표시를 위해 저장하지 않음)
+        viewModelScope.launch {
+            preferences.completeOnboarding()
+        }
         _uiState.update { it.copy(onboardingCompleted = true) }
+    }
+
+    /**
+     * 온보딩 다시 보기 (GateKeeper에서 호출)
+     */
+    fun showOnboarding() {
+        _uiState.update { it.copy(onboardingCompleted = false) }
     }
 
     fun changeNickname(newNickname: String) {

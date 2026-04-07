@@ -20,12 +20,18 @@ class ChatRepository {
     private val reportsRef: DatabaseReference = database.getReference("reports")
     private val allTimeRecordsRef: DatabaseReference = database.getReference("all_time_records")
     private val tokensRef: DatabaseReference = database.getReference("fcm_tokens")
+    private val connectedRef: DatabaseReference = database.getReference(".info/connected")
 
     // 최근 50개 메시지만 유지
     private val messageLimit = 50
 
     // 입장 시간 (이 시간 이후의 메시지만 표시)
     private var joinedAt: Long = 0L
+
+    // 현재 접속 중인 사용자 정보 (재연결 시 핸들러 재설정용)
+    private var currentUserId: String? = null
+    private var currentNickname: String? = null
+    private var isCurrentlyConnected: Boolean = false
 
     fun getMessages(): Flow<List<ChatMessage>> = callbackFlow {
         val listener = object : ValueEventListener {
@@ -139,6 +145,68 @@ class ChatRepository {
         joinedAt = time
     }
 
+    /**
+     * Firebase 연결 상태 모니터링
+     * 네트워크 끊김/재연결 감지하여 onDisconnect 핸들러 재설정
+     */
+    fun getConnectionState(): Flow<Boolean> = callbackFlow {
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val connected = snapshot.getValue(Boolean::class.java) ?: false
+                val wasConnected = isCurrentlyConnected
+                isCurrentlyConnected = connected
+
+                // 재연결 감지: 이전에 끊겼다가 다시 연결됨
+                if (connected && !wasConnected && currentUserId != null && currentNickname != null) {
+                    // 재연결 시 onDisconnect 핸들러 재설정 필요
+                }
+
+                trySend(connected)
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                trySend(false)
+            }
+        }
+
+        connectedRef.addValueEventListener(listener)
+
+        awaitClose {
+            connectedRef.removeEventListener(listener)
+        }
+    }
+
+    /**
+     * 재연결 시 onDisconnect 핸들러 재설정
+     * 네트워크 끊김으로 배신 메시지가 전송되었을 수 있으므로 다시 설정
+     */
+    suspend fun resetDisconnectHandlersOnReconnect() {
+        val userId = currentUserId ?: return
+        val nickname = currentNickname ?: return
+
+        // 기존 핸들러 취소 (이미 발동되었을 수 있음)
+        try {
+            disconnectMessageKey?.let { key ->
+                messagesRef.child(key)
+                    .onDisconnect()
+                    .cancel()
+                    .await()
+            }
+            usersRef.child(userId).child("isOnline")
+                .onDisconnect()
+                .cancel()
+                .await()
+        } catch (e: Exception) {
+            // 이미 발동된 경우 무시
+        }
+
+        // 온라인 상태 복구
+        usersRef.child(userId).child("isOnline").setValue(true).await()
+
+        // 새로운 핸들러 설정
+        setupDisconnectHandlers(userId, nickname)
+    }
+
     fun getNewMessages(): Flow<ChatMessage> = callbackFlow {
         val listener = object : ChildEventListener {
             override fun onChildAdded(snapshot: DataSnapshot, previousChildName: String?) {
@@ -217,6 +285,12 @@ class ChatRepository {
     private var disconnectMessageKey: String? = null
 
     suspend fun joinChat(userId: String, nickname: String, isAdmin: Boolean = false) {
+        // 재연결 시 핸들러 재설정을 위해 사용자 정보 저장
+        if (!isAdmin) {
+            currentUserId = userId
+            currentNickname = nickname
+        }
+
         val user = EliteUser(
             userId = userId,
             nickname = nickname,
@@ -288,6 +362,10 @@ class ChatRepository {
         // 정상 종료 시 onDisconnect 핸들러 취소
         cancelDisconnectHandlers(userId)
         usersRef.child(userId).child("isOnline").setValue(false).await()
+
+        // 사용자 정보 클리어
+        currentUserId = null
+        currentNickname = null
     }
 
     suspend fun updateUserActivity(userId: String) {

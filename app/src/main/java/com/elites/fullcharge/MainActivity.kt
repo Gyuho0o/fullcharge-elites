@@ -211,7 +211,8 @@ class MainActivity : ComponentActivity() {
                         onSendAdminNotice = { message -> viewModel.sendAdminNotice(message) },
                         onDeleteMessage = { messageId -> viewModel.deleteMessage(messageId) },
                         onHandleReport = { reportId, messageId, deleteMsg -> viewModel.handleReport(reportId, messageId, deleteMsg) },
-                        onDismissReport = { reportId -> viewModel.dismissReport(reportId) }
+                        onDismissReport = { reportId -> viewModel.dismissReport(reportId) },
+                        onShowOnboarding = { viewModel.showOnboarding() }
                     )
                     }
                 }
@@ -252,7 +253,8 @@ class MainActivity : ComponentActivity() {
         onSendAdminNotice: (String) -> Unit,
         onDeleteMessage: (String) -> Unit,
         onHandleReport: (String, String, Boolean) -> Unit,
-        onDismissReport: (String) -> Unit
+        onDismissReport: (String) -> Unit,
+        onShowOnboarding: () -> Unit
     ) {
         AnimatedContent(
             targetState = uiState.currentScreen,
@@ -296,7 +298,9 @@ class MainActivity : ComponentActivity() {
                         onAdminLogin = onAdminLogin,
                         onDismissAdminDialog = onDismissAdminDialog,
                         onEnterAsAdmin = onEnterAsAdmin,
-                        onAdminLogout = onAdminLogout
+                        onAdminLogout = onAdminLogout,
+                        // 온보딩 다시보기
+                        onShowOnboarding = onShowOnboarding
                     )
                 }
                 AppScreen.CHAT -> {
