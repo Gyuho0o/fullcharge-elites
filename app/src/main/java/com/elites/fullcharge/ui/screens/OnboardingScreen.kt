@@ -1,5 +1,6 @@
 package com.elites.fullcharge.ui.screens
 
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -12,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -103,6 +105,18 @@ fun OnboardingScreen(
                 }
             }
 
+            // 버튼 펄스 효과
+            val infiniteTransition = rememberInfiniteTransition(label = "buttonPulse")
+            val buttonScale by infiniteTransition.animateFloat(
+                initialValue = 1f,
+                targetValue = 1.02f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(1000, easing = FastOutSlowInEasing),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "scale"
+            )
+
             // 다음/시작하기 버튼
             Button(
                 onClick = {
@@ -115,17 +129,22 @@ fun OnboardingScreen(
                     }
                 },
                 modifier = Modifier
+                    .scale(buttonScale)
                     .fillMaxWidth()
                     .height(56.dp),
                 shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = TossBlue
+                ),
+                elevation = ButtonDefaults.buttonElevation(
+                    defaultElevation = 4.dp,
+                    pressedElevation = 8.dp
                 )
             ) {
                 Text(
                     text = if (isLastPage) "시작하기" else "다음",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.SemiBold
                 )
             }
 
