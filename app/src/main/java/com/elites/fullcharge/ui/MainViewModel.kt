@@ -34,6 +34,8 @@ data class MainUiState(
     val onlineUsers: List<EliteUser> = emptyList(),
     val allTimeRecords: List<AllTimeRecord> = emptyList(),
     val onlineUserCount: Int = 0,
+    val onlineUserCountLoaded: Boolean = false,  // Firebase 데이터 로딩 완료 여부
+    val onlineUsersLoaded: Boolean = false,  // 채팅방 유저 목록 로딩 완료 여부
     val sessionStartTime: Long = 0L,
     val sessionDuration: Long = 0L,
     val isInChat: Boolean = false,
@@ -140,7 +142,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // 온라인 사용자 수 관찰
         viewModelScope.launch {
             chatRepository.getOnlineUserCount().collect { count ->
-                _uiState.update { it.copy(onlineUserCount = count) }
+                _uiState.update { it.copy(onlineUserCount = count, onlineUserCountLoaded = true) }
             }
         }
 
@@ -427,7 +429,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 } else {
                     users
                 }
-                _uiState.update { it.copy(onlineUsers = usersWithSelf) }
+                _uiState.update { it.copy(onlineUsers = usersWithSelf, onlineUsersLoaded = true) }
             }
         }
     }
@@ -810,7 +812,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     sessionDuration = 0L,
                     comboState = ComboState(),  // 콤보 리셋
                     isAdminMode = false,  // 관리자 모드 비활성화
-                    nickname = restoredNickname  // 닉네임 복원
+                    nickname = restoredNickname,  // 닉네임 복원
+                    onlineUsersLoaded = false  // 유저 목록 로딩 상태 리셋
                 )
             }
         }

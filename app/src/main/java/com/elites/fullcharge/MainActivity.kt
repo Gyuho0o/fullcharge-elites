@@ -310,6 +310,7 @@ class MainActivity : ComponentActivity() {
                         batteryState = uiState.batteryState,
                         messages = uiState.messages,
                         onlineUsers = uiState.onlineUsers,
+                        onlineUsersLoaded = uiState.onlineUsersLoaded,
                         allTimeRecords = uiState.allTimeRecords,
                         currentUserId = uiState.userId,
                         currentUserNickname = uiState.nickname,

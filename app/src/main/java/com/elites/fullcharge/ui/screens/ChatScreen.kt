@@ -92,6 +92,7 @@ fun ChatScreen(
     batteryState: BatteryState,
     messages: List<ChatMessage>,
     onlineUsers: List<EliteUser>,
+    onlineUsersLoaded: Boolean = true,
     allTimeRecords: List<AllTimeRecord> = emptyList(),
     currentUserId: String,
     currentUserNickname: String,
@@ -279,6 +280,7 @@ fun ChatScreen(
             ChatTopBar(
                 batteryLevel = batteryState.level,
                 userCount = onlineUsers.size,
+                userCountLoaded = onlineUsersLoaded,
                 rank = currentRank,
                 nickname = currentUserNickname,
                 isLeaderboardExpanded = showLeaderboard,
@@ -755,6 +757,7 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawQuickBolt(bolt:
 private fun ChatTopBar(
     batteryLevel: Int,
     userCount: Int,
+    userCountLoaded: Boolean = true,
     rank: EliteRank,
     nickname: String,
     isLeaderboardExpanded: Boolean,
@@ -819,7 +822,7 @@ private fun ChatTopBar(
                             color = TextPrimary
                         )
                         AnimatedContent(
-                            targetState = userCount,
+                            targetState = if (userCountLoaded) userCount else -1,
                             transitionSpec = {
                                 slideInVertically { -it } + fadeIn() togetherWith
                                         slideOutVertically { it } + fadeOut()
@@ -827,7 +830,7 @@ private fun ChatTopBar(
                             label = "userCount"
                         ) { count ->
                             Text(
-                                text = "지금 ${count}명이 풀배터리",
+                                text = if (count >= 0) "지금 ${count}명이 풀배터리" else "접속자 확인 중...",
                                 fontSize = 12.sp,
                                 color = TextSecondary
                             )
