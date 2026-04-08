@@ -3394,44 +3394,49 @@ private fun EmojiPickerSheet(
                 .padding(horizontal = 16.dp)
                 .padding(bottom = 32.dp)
         ) {
-            // 사용 가능한 이모지 (부사관용)
-            if (currentRank.ordinal >= EliteRank.STAFF_SERGEANT.ordinal) {
+            // 부사관 이모지 (ID: 1~12)
+            EmojiSection(
+                title = "부사관 이모지",
+                titleColor = Color(0xFF3B82F6),
+                emojis = allEmojis.filter { it.id in 1..12 },
+                availableEmojis = availableEmojis,
+                onEmojiSelected = onEmojiSelected
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // 장교 이모지 (ID: 101~199)
+            val coEmojis = allEmojis.filter { it.id in 101..199 }
+            if (coEmojis.isNotEmpty()) {
                 EmojiSection(
-                    title = "부사관 이모지",
-                    titleColor = Color(0xFF3B82F6),
-                    emojis = allEmojis.filter { it.id in 1..6 },
+                    title = "장교 이모지",
+                    titleColor = Color(0xFF10B981),
+                    emojis = coEmojis,
                     availableEmojis = availableEmojis,
-                    onEmojiSelected = onEmojiSelected
+                    onEmojiSelected = onEmojiSelected,
+                    lockedMessage = if (currentRank.ordinal < EliteRank.SECOND_LIEUTENANT.ordinal)
+                        "소위 이상 사용 가능" else null
                 )
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
-            // 위관급 이모지
-            EmojiSection(
-                title = "위관급 이모지",
-                titleColor = Color(0xFF10B981),
-                emojis = allEmojis.filter { it.id in 7..10 },
-                availableEmojis = availableEmojis,
-                onEmojiSelected = onEmojiSelected,
-                lockedMessage = if (currentRank.ordinal < EliteRank.SECOND_LIEUTENANT.ordinal)
-                    "소위 이상 사용 가능" else null
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // 영관급 이모지
-            EmojiSection(
-                title = "영관급 이모지",
-                titleColor = Color(0xFF7C3AED),
-                emojis = allEmojis.filter { it.id in 11..14 },
-                availableEmojis = availableEmojis,
-                onEmojiSelected = onEmojiSelected,
-                lockedMessage = if (currentRank.ordinal < EliteRank.MAJOR.ordinal)
-                    "소령 이상 사용 가능" else null
-            )
+            // 영관급 이모지 (ID: 201~300) - 추후 추가
+            val foEmojis = allEmojis.filter { it.id in 201..300 }
+            if (foEmojis.isNotEmpty()) {
+                EmojiSection(
+                    title = "영관급 이모지",
+                    titleColor = Color(0xFF7C3AED),
+                    emojis = foEmojis,
+                    availableEmojis = availableEmojis,
+                    onEmojiSelected = onEmojiSelected,
+                    lockedMessage = if (currentRank.ordinal < EliteRank.MAJOR.ordinal)
+                        "소령 이상 사용 가능" else null
+                )
+            }
         }
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun EmojiSection(
     title: String,
@@ -3463,9 +3468,10 @@ private fun EmojiSection(
         }
         Spacer(modifier = Modifier.height(8.dp))
 
-        Row(
+        androidx.compose.foundation.layout.FlowRow(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             emojis.forEach { emoji ->
                 val isAvailable = availableEmojis.any { it.id == emoji.id }
@@ -3586,12 +3592,12 @@ private fun MessageTextWithEmoji(
                 is MessagePart.EmojiPart -> {
                     val drawableResId = RankEmoji.getEmojiDrawableResId(part.emojiId)
                     if (drawableResId != null) {
-                        // 부사관: 48dp (정사각형), 위관급/영���급: 원본 비율
-                        val isOfficerEmoji = part.emojiId in 7..14
+                        // 부사관: 48dp, 장교: 768dp (원본 비율)
+                        val isOfficerEmoji = part.emojiId in 101..300
                         val emojiWidth = when (part.emojiId) {
-                            in 7..10 -> 192.dp  // 위관급 (원본 비율)
-                            in 11..14 -> 320.dp // 영관급 (원본 비율, 위관급보다 큼)
-                            else -> 48.dp       // 부사관
+                            in 101..199 -> 768.dp  // 장교 (원본 비율)
+                            in 201..300 -> 960.dp  // 영관급 (원본 비율, 장교보다 큼)
+                            else -> 48.dp          // 부사관
                         }
 
                         Box(
