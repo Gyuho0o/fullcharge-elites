@@ -953,9 +953,11 @@ private fun RankingBoardPanel(
                 .fillMaxWidth()
                 .height(240.dp)
         ) { page ->
-            // 실시간: 모든 접속자, 역대: 50위까지
+            // 실시간: 모든 접속자 (관리자 제외), 역대: 50위까지
             val items = if (page == 0) {
-                liveRanking.sortedByDescending { it.sessionDuration }
+                liveRanking
+                    .filter { !it.isAdmin }  // 관리자 제외
+                    .sortedByDescending { it.sessionDuration }
             } else {
                 allTimeRanking.sortedByDescending { it.durationMillis }.take(50)
             }

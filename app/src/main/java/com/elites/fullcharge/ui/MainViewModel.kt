@@ -74,7 +74,9 @@ data class MainUiState(
     val recentLeaveCount: Int = 0,
     val showJoinLeaveIndicator: Boolean = false,
     // 차단한 사용자 ID 목록 (신고한 사용자)
-    val blockedUserIds: Set<String> = emptySet()
+    val blockedUserIds: Set<String> = emptySet(),
+    // 충전 통계 (게이트키퍼 화면용)
+    val chargingStats: ElitePreferences.ChargingStats = ElitePreferences.ChargingStats()
 ) {
     companion object {
         const val DANGER_COUNTDOWN_SECONDS = 10  // 10초 카운트다운
@@ -140,6 +142,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             preferences.blockedUserIds.collect { blockedIds ->
                 _uiState.update { it.copy(blockedUserIds = blockedIds) }
+            }
+        }
+
+        // 충전 통계 관찰
+        viewModelScope.launch {
+            preferences.chargingStats.collect { stats ->
+                _uiState.update { it.copy(chargingStats = stats) }
             }
         }
 
@@ -332,6 +341,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             // 세션 시작
             preferences.startSession()
+
+            // 연속 접속 스트릭 업데이트
+            preferences.updateLoginStreak()
 
             _uiState.update {
                 it.copy(
@@ -830,6 +842,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             // 관리자가 아닌 경우만 세션 복구용으로 저장
             if (!wasAdminMode && state.sessionDuration >= ElitePreferences.MIN_RESTORE_DURATION_MS) {
                 preferences.saveSessionForRestore(state.sessionDuration)
+            }
+
+            // 관리자가 아닌 경우 배신 횟수 증가 (배터리 방전으로 추방)
+            if (!wasAdminMode) {
+                preferences.incrementBetrayalCount()
             }
 
             // 퇴장 알림은 플로팅 UI로 대체 (시스템 메시지 전송 없음)

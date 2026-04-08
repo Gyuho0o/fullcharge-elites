@@ -36,6 +36,12 @@ class ElitePreferences(private val context: Context) {
         val UNLOCKED_ACHIEVEMENTS = stringSetPreferencesKey("unlocked_achievements")
         // 차단한 사용자 ID 목록
         val BLOCKED_USER_IDS = stringSetPreferencesKey("blocked_user_ids")
+        // 연속 접속 (스트릭)
+        val LAST_LOGIN_DATE = stringPreferencesKey("last_login_date")  // yyyy-MM-dd 형식
+        val CURRENT_STREAK = intPreferencesKey("current_streak")
+        val LONGEST_STREAK = intPreferencesKey("longest_streak")
+        // 배신 횟수
+        val BETRAYAL_COUNT = intPreferencesKey("betrayal_count")
     }
 
     companion object {
@@ -281,6 +287,114 @@ class ElitePreferences(private val context: Context) {
      */
     suspend fun getBlockedUserIds(): Set<String> {
         return blockedUserIds.first()
+    }
+
+    // ========== 연속 접속 (스트릭) 관련 ==========
+
+    val currentStreak: Flow<Int> = context.dataStore.data.map { prefs ->
+        prefs[Keys.CURRENT_STREAK] ?: 0
+    }
+
+    val longestStreak: Flow<Int> = context.dataStore.data.map { prefs ->
+        prefs[Keys.LONGEST_STREAK] ?: 0
+    }
+
+    /**
+     * 접속 시 스트릭 업데이트
+     * @return 현재 스트릭 일수
+     */
+    suspend fun updateLoginStreak(): Int {
+        var streak = 0
+        val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+            .format(java.util.Date())
+
+        context.dataStore.edit { prefs ->
+            val lastLoginDate = prefs[Keys.LAST_LOGIN_DATE] ?: ""
+            val currentStreakValue = prefs[Keys.CURRENT_STREAK] ?: 0
+
+            streak = when {
+                lastLoginDate == today -> {
+                    // 오늘 이미 접속함 - 스트릭 유지
+                    currentStreakValue
+                }
+                isYesterday(lastLoginDate) -> {
+                    // 어제 접속함 - 스트릭 증가
+                    currentStreakValue + 1
+                }
+                else -> {
+                    // 연속 접속 끊김 - 1일부터 다시 시작
+                    1
+                }
+            }
+
+            prefs[Keys.LAST_LOGIN_DATE] = today
+            prefs[Keys.CURRENT_STREAK] = streak
+
+            // 최장 스트릭 업데이트
+            val longestStreakValue = prefs[Keys.LONGEST_STREAK] ?: 0
+            if (streak > longestStreakValue) {
+                prefs[Keys.LONGEST_STREAK] = streak
+            }
+        }
+        return streak
+    }
+
+    private fun isYesterday(dateStr: String): Boolean {
+        if (dateStr.isEmpty()) return false
+        return try {
+            val format = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+            val date = format.parse(dateStr) ?: return false
+            val yesterday = java.util.Calendar.getInstance().apply {
+                add(java.util.Calendar.DAY_OF_YEAR, -1)
+            }.time
+            format.format(date) == format.format(yesterday)
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    // ========== 배신 횟수 관련 ==========
+
+    val betrayalCount: Flow<Int> = context.dataStore.data.map { prefs ->
+        prefs[Keys.BETRAYAL_COUNT] ?: 0
+    }
+
+    /**
+     * 배신 횟수 증가 (배터리 방전으로 퇴장 시)
+     */
+    suspend fun incrementBetrayalCount(): Int {
+        var newCount = 0
+        context.dataStore.edit { prefs ->
+            newCount = (prefs[Keys.BETRAYAL_COUNT] ?: 0) + 1
+            prefs[Keys.BETRAYAL_COUNT] = newCount
+        }
+        return newCount
+    }
+
+    // ========== 충전 통계 데이터 클래스 ==========
+
+    data class ChargingStats(
+        val totalEliteTimeMs: Long = 0L,
+        val longestSessionMs: Long = 0L,
+        val currentStreak: Int = 0,
+        val longestStreak: Int = 0,
+        val betrayalCount: Int = 0,
+        val totalMessages: Int = 0,
+        val crisisEscapeCount: Int = 0,
+        val highestRank: String = EliteRank.TRAINEE.name
+    )
+
+    val chargingStats: Flow<ChargingStats> = context.dataStore.data.map { prefs ->
+        ChargingStats(
+            totalEliteTimeMs = prefs[Keys.TOTAL_ELITE_TIME] ?: 0L,
+            longestSessionMs = prefs[Keys.LONGEST_SESSION] ?: 0L,
+            currentStreak = prefs[Keys.CURRENT_STREAK] ?: 0,
+            longestStreak = prefs[Keys.LONGEST_STREAK] ?: 0,
+            betrayalCount = prefs[Keys.BETRAYAL_COUNT] ?: 0,
+            totalMessages = prefs[Keys.TOTAL_MESSAGES] ?: 0,
+            crisisEscapeCount = prefs[Keys.CRISIS_ESCAPE_COUNT] ?: 0,
+            highestRank = prefs[Keys.HIGHEST_RANK] ?: EliteRank.TRAINEE.name
+        )
     }
 
     private fun generateRandomNickname(): String {

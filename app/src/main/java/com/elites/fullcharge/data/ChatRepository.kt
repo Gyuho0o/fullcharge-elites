@@ -133,10 +133,9 @@ class ChatRepository {
                     sortedMessages
                         .filter { msg ->
                             msg.timestamp < joinedAt &&
-                            // 합류/퇴장 알림 시스템 메시지만 제외 (일반 채팅 + 승급/위기탈출 메시지는 포함)
+                            // 합류/퇴장 알림 시스템 메시지만 제외 (배신 메시지는 긴급 알림이므로 표시)
                             !(msg.isSystemMessage && (msg.message.contains("합류했습니다") ||
                                                        msg.message.contains("퇴장했습니다") ||
-                                                       msg.message.contains("배신했습니다") ||
                                                        msg.message.contains("복귀했습니다")))
                         }
                         .takeLast(50)
