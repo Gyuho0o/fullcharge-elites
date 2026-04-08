@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.elites.fullcharge.data.*
 import com.elites.fullcharge.ui.components.ChargingParticles
+import com.elites.fullcharge.ui.components.JoinLeaveIndicator
 import com.elites.fullcharge.ui.components.RankInsignia
 import com.elites.fullcharge.ui.theme.*
 import kotlinx.coroutines.delay
@@ -94,6 +95,9 @@ fun ChatScreen(
     reports: List<Report> = emptyList(),
     onHandleReport: (String, String, Boolean) -> Unit = { _, _, _ -> },
     onDismissReport: (String) -> Unit = {},
+    recentJoinCount: Int = 0,
+    recentLeaveCount: Int = 0,
+    showJoinLeaveIndicator: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     var messageInput by remember { mutableStateOf("") }
@@ -191,7 +195,10 @@ fun ChatScreen(
                 sessionDuration = sessionDuration,
                 currentUserNickname = currentUserNickname,
                 onShowNicknameDialog = { showNicknameDialog = true },
-                onLeaveChat = { showLeaveConfirmDialog = true }
+                onLeaveChat = { showLeaveConfirmDialog = true },
+                recentJoinCount = recentJoinCount,
+                recentLeaveCount = recentLeaveCount,
+                showJoinLeaveIndicator = showJoinLeaveIndicator
             )
 
             // ===== RANKING BOARD PANEL (v0: toggleable) =====
@@ -498,7 +505,10 @@ private fun HudHeader(
     sessionDuration: Long,
     currentUserNickname: String,
     onShowNicknameDialog: () -> Unit,
-    onLeaveChat: () -> Unit
+    onLeaveChat: () -> Unit,
+    recentJoinCount: Int = 0,
+    recentLeaveCount: Int = 0,
+    showJoinLeaveIndicator: Boolean = false
 ) {
     val isFullCharge = batteryLevel == 100
     val batteryColor = if (isFullCharge) EliteGreen else CrisisRed
@@ -709,6 +719,16 @@ private fun HudHeader(
                             .background(EliteGreen)
                     )
                 }
+
+                // 실시간 합류/퇴장 인디케이터
+                JoinLeaveIndicator(
+                    joinCount = recentJoinCount,
+                    leaveCount = recentLeaveCount,
+                    isVisible = showJoinLeaveIndicator,
+                    modifier = Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .padding(top = 4.dp)
+                )
             }
         }
     }

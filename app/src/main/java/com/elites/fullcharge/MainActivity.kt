@@ -360,7 +360,11 @@ class MainActivity : ComponentActivity() {
                         // 신고 관리
                         reports = uiState.reports,
                         onHandleReport = onHandleReport,
-                        onDismissReport = onDismissReport
+                        onDismissReport = onDismissReport,
+                        // 실시간 합류/퇴장 카운트
+                        recentJoinCount = uiState.recentJoinCount,
+                        recentLeaveCount = uiState.recentLeaveCount,
+                        showJoinLeaveIndicator = uiState.showJoinLeaveIndicator
                     )
                 }
                 AppScreen.EXILE -> {

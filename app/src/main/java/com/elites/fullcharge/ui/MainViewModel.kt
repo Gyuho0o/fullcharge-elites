@@ -68,7 +68,11 @@ data class MainUiState(
     // 시간 기반 이벤트
     val personalHourMilestone: Int? = null,  // 달성한 시간 (1, 2, 3...)
     val isHourlyChime: Boolean = false,
-    val isMidnightSpecial: Boolean = false
+    val isMidnightSpecial: Boolean = false,
+    // 실시간 합류/퇴장 카운트 (플로팅 UI용)
+    val recentJoinCount: Int = 0,
+    val recentLeaveCount: Int = 0,
+    val showJoinLeaveIndicator: Boolean = false
 ) {
     companion object {
         const val DANGER_COUNTDOWN_SECONDS = 10  // 10초 카운트다운
@@ -97,6 +101,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // 시간 기반 이벤트 추적
     private var lastCheckedHour = -1
     private var lastPersonalHour = -1L
+
+    // 합류/퇴장 카운트 추적
+    private var previousUserIds = setOf<String>()
+    private var joinLeaveIndicatorJob: Job? = null
 
     // 도배 방지용
     private var lastSentMessage: String = ""
@@ -228,17 +236,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val showCelebration = currentState.dangerStartTime > 0 && dangerDuration >= 2000
 
         if (showCelebration) {
-            // 위기 탈출 성공! 축하 이펙트 표시 및 업적 체크
+            // 위기 탈출 성공! 축하 이펙트 표시 및 업적 체크 (본인에게만 로컬 UI로 표시)
             val nickname = currentState.nickname
             viewModelScope.launch {
                 val escapeCount = preferences.incrementCrisisEscapeCount()
                 checkCrisisEscapeAchievements(escapeCount)
-
-                // 다른 사용자에게도 보이는 시스템 메시지 전송
-                chatRepository.sendSystemMessage("${nickname}님이 위기에서 탈출했습니다! ⚡")
             }
 
-            // 로컬 축하 이벤트 (본인에게만)
+            // 로컬 축하 이벤트 (본인에게만) - Firebase 전송 없음
             emitChatEvent(ChatEvent.UserCrisisEscape(nickname))
         }
 
@@ -314,10 +319,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             // FCM 토큰 등록
             registerFcmToken(state.userId)
 
-            // 새 세션일 때만 입장 알림 전송
-            if (isNewSession) {
-                chatRepository.sendSystemMessage("${state.nickname}님이 전우회에 합류했습니다")
-            }
+            // 입장 알림은 플로팅 UI로 대체 (시스템 메시지 전송 없음)
 
             // 세션 시작
             preferences.startSession()
@@ -379,9 +381,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 forceSessionStartTime = adjustedStartTime
             )
 
-            // 입장 알림 시스템 메시지 전송 (다른 사용자들에게 표시)
-            val rank = EliteRank.fromDuration(previousDuration)
-            chatRepository.sendSystemMessage("${state.nickname}(${rank.koreanName})님이 전우회에 복귀했습니다")
+            // 입장 알림은 플로팅 UI로 대체 (시스템 메시지 전송 없음)
 
             // 세션 시작 (조정된 시간으로)
             preferences.startSession()
@@ -478,6 +478,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun startOnlineUsersObservation() {
         onlineUsersObserverJob?.cancel()
+        previousUserIds = emptySet()  // 리셋
         onlineUsersObserverJob = viewModelScope.launch {
             chatRepository.getOnlineUsers().collect { users ->
                 val state = _uiState.value
@@ -497,7 +498,44 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 } else {
                     users
                 }
+
+                // 합류/퇴장 카운트 계산 (첫 로드 이후부터)
+                val currentUserIds = usersWithSelf.map { it.userId }.toSet()
+                if (previousUserIds.isNotEmpty()) {
+                    val joinedIds = currentUserIds - previousUserIds
+                    val leftIds = previousUserIds - currentUserIds
+                    val joinCount = joinedIds.size
+                    val leaveCount = leftIds.size
+
+                    if (joinCount > 0 || leaveCount > 0) {
+                        _uiState.update {
+                            it.copy(
+                                recentJoinCount = it.recentJoinCount + joinCount,
+                                recentLeaveCount = it.recentLeaveCount + leaveCount,
+                                showJoinLeaveIndicator = true
+                            )
+                        }
+                        // 일정 시간 후 카운트 리셋
+                        resetJoinLeaveCounterAfterDelay()
+                    }
+                }
+                previousUserIds = currentUserIds
+
                 _uiState.update { it.copy(onlineUsers = usersWithSelf, onlineUsersLoaded = true) }
+            }
+        }
+    }
+
+    private fun resetJoinLeaveCounterAfterDelay() {
+        joinLeaveIndicatorJob?.cancel()
+        joinLeaveIndicatorJob = viewModelScope.launch {
+            delay(5000)  // 5초 후 리셋
+            _uiState.update {
+                it.copy(
+                    recentJoinCount = 0,
+                    recentLeaveCount = 0,
+                    showJoinLeaveIndicator = false
+                )
             }
         }
     }
@@ -520,15 +558,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                     _uiState.update { it.copy(sessionDuration = duration) }
 
-                    // 승급 이벤트 발생
+                    // 승급 이벤트 발생 (본인에게만 로컬 UI로 표시)
                     if (previousRank != null && currentRank != previousRank && currentRank.ordinal > previousRank!!.ordinal) {
                         val nickname = _uiState.value.nickname
-                        // 로컬 UI 이벤트 (축하 모달)
+                        // 로컬 UI 이벤트 (축하 모달) - Firebase 전송 없음
                         emitChatEvent(ChatEvent.UserRankUp(nickname, currentRank))
-                        // 다른 사용자에게 보이는 시스템 메시지
-                        viewModelScope.launch {
-                            chatRepository.sendSystemMessage("${nickname}님이 ${currentRank.koreanName}(으)로 진급했습니다!")
-                        }
                     }
                     previousRank = currentRank
 
@@ -771,8 +805,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 preferences.saveSessionForRestore(state.sessionDuration)
             }
 
-            // 퇴장 알림 시스템 메시지 전송
-            chatRepository.sendSystemMessage("${state.nickname}님이 전우회를 배신했습니다")
+            // 퇴장 알림은 플로팅 UI로 대체 (시스템 메시지 전송 없음)
 
             // Firebase에서 퇴장 처리
             chatRepository.leaveChat(state.userId)
@@ -789,6 +822,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             connectionMonitorJob?.cancel()
             messageObserverJob?.cancel()
             onlineUsersObserverJob?.cancel()
+            joinLeaveIndicatorJob?.cancel()
 
             // 백그라운드 서비스 종료 (퇴장 메시지는 이미 전송됨)
             stopBackgroundService()
@@ -799,7 +833,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     currentScreen = AppScreen.EXILE,
                     isInChat = false,
                     isInDanger = false,
-                    dangerCountdown = 0
+                    dangerCountdown = 0,
+                    recentJoinCount = 0,
+                    recentLeaveCount = 0,
+                    showJoinLeaveIndicator = false
                 )
             }
         }
@@ -834,11 +871,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             // 자발적 퇴장 시에는 세션 복구용으로 저장하지 않음 (배터리 소진으로 추방당한 경우만 저장)
-
-            // 관리자가 아닌 경우만 퇴장 알림 시스템 메시지 전송
-            if (!wasAdminMode) {
-                chatRepository.sendSystemMessage("${state.nickname}님이 퇴장했습니다")
-            }
+            // 퇴장 시스템 메시지는 확장성 문제로 제거 - 플로팅 UI로 실시간 카운트만 표시
 
             // FCM 토큰 삭제
             unregisterFcmToken(state.userId)
@@ -859,6 +892,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             connectionMonitorJob?.cancel()
             messageObserverJob?.cancel()
             onlineUsersObserverJob?.cancel()
+            joinLeaveIndicatorJob?.cancel()
 
             // 백그라운드 서비스 종료 (정상 종료이므로 퇴장 메시지 없음)
             stopBackgroundServiceGracefully()
@@ -883,7 +917,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     supplyUsed = false,  // 긴급 보급 리셋
                     isAdminMode = false,  // 관리자 모드 비활성화
                     nickname = restoredNickname,  // 닉네임 복원
-                    onlineUsersLoaded = false  // 유저 목록 로딩 상태 리셋
+                    onlineUsersLoaded = false,  // 유저 목록 로딩 상태 리셋
+                    recentJoinCount = 0,  // 합류/퇴장 카운트 리셋
+                    recentLeaveCount = 0,
+                    showJoinLeaveIndicator = false
                 )
             }
         }

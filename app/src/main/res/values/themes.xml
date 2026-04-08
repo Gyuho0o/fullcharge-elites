@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.Elites" parent="android:Theme.Material.NoActionBar">
-        <item name="android:statusBarColor">@color/splash_blue</item>
-        <item name="android:navigationBarColor">@color/splash_blue</item>
+        <item name="android:statusBarColor">@color/splash_black</item>
+        <item name="android:navigationBarColor">@color/splash_black</item>
         <item name="android:windowBackground">@drawable/splash_background</item>
     </style>
 </resources>
