@@ -7,7 +7,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -1539,11 +1541,13 @@ private fun UserMessage(
             Row(
                 modifier = Modifier
                     .padding(top = 4.dp)
+                    .horizontalScroll(rememberScrollState())
                     .clip(RoundedCornerShape(20.dp))
                     .background(SurfaceBlack)
                     .border(1.dp, BorderMuted, RoundedCornerShape(20.dp))
                     .padding(horizontal = 8.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 customReactions.forEach { emoji ->
                     val isSelected = message.reactions[emoji]?.contains(currentUserId) == true
@@ -1566,7 +1570,8 @@ private fun UserMessage(
                             fontSize = 13.sp,
                             fontFamily = FontFamily.Serif,  // 궁서체 스타일
                             fontWeight = FontWeight.Bold,
-                            color = emojiColor
+                            color = emojiColor,
+                            maxLines = 1
                         )
                     }
                 }
@@ -1589,14 +1594,22 @@ private fun UserMessage(
                                 onBlockUser()
                                 showReactionPicker = false
                             }
-                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
                     ) {
-                        Text(
-                            text = "🚨 신고",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = CrisisRed
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "🚨",
+                                fontSize = 12.sp
+                            )
+                            Spacer(modifier = Modifier.width(2.dp))
+                            Text(
+                                text = "신고",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = CrisisRed,
+                                maxLines = 1
+                            )
+                        }
                     }
                 }
 
@@ -1609,7 +1622,8 @@ private fun UserMessage(
                 ) {
                     Text(
                         text = "✕",
-                        fontSize = 12.sp,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
                         color = ForegroundMuted
                     )
                 }
