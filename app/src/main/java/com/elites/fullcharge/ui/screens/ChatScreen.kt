@@ -1592,50 +1592,58 @@ private fun RankUpDialog(
         onDismiss()
     }
 
-    AlertDialog(
+    // AlertDialog 대신 Dialog 사용하여 더 나은 레이아웃 제어
+    androidx.compose.ui.window.Dialog(
         onDismissRequest = {},  // 바깥 터치로 닫히지 않음
-        containerColor = CardBlack,
-        shape = RoundedCornerShape(16.dp),
-        title = {
-            Box(modifier = Modifier.fillMaxWidth()) {
+        properties = androidx.compose.ui.window.DialogProperties(
+            dismissOnBackPress = false,
+            dismissOnClickOutside = false,
+            usePlatformDefaultWidth = false  // 커스텀 너비 사용
+        )
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(0.9f)  // 화면 너비의 90%
+                .wrapContentHeight(),
+            shape = RoundedCornerShape(16.dp),
+            color = CardBlack
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
                 // X 버튼 (우측 상단)
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .size(32.dp)
-                        .clip(CircleShape)
-                        .background(ForegroundMuted.copy(alpha = 0.2f))
-                        .clickable { onDismiss() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "✕",
-                        fontSize = 14.sp,
-                        color = ForegroundMuted
-                    )
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(ForegroundMuted.copy(alpha = 0.2f))
+                            .clickable { onDismiss() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "✕",
+                            fontSize = 14.sp,
+                            color = ForegroundMuted
+                        )
+                    }
                 }
 
-                // 타이틀 콘텐츠
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(text = "🎖️", fontSize = 48.sp)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "진급을 축하합니다!",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 20.sp,
-                        color = EliteGreen
-                    )
-                }
-            }
-        },
-        text = {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.fillMaxWidth()
-            ) {
+                // 타이틀
+                Text(text = "🎖️", fontSize = 48.sp)
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "진급을 축하합니다!",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 20.sp,
+                    color = EliteGreen
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // 계급 정보
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = EliteGreen.copy(alpha = 0.1f),
@@ -1645,10 +1653,8 @@ private fun RankUpDialog(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier.padding(16.dp)
                     ) {
-                        // 계급장
                         RankInsignia(rank = newRank, size = 48.dp)
                         Spacer(modifier = Modifier.height(12.dp))
-                        // 계급명
                         Text(
                             text = newRank.koreanName,
                             fontSize = 24.sp,
@@ -1667,31 +1673,36 @@ private fun RankUpDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // 배너 광고
+                // 배너 광고 영역 - 고정 크기로 명시적 지정
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .height(60.dp)  // 배너 광고 표준 높이 + 여유
                         .clip(RoundedCornerShape(8.dp))
+                        .background(MutedBlack),
+                    contentAlignment = Alignment.Center
                 ) {
                     bannerAdContent()
                 }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = onDismiss,
-                colors = ButtonDefaults.buttonColors(containerColor = EliteGreen),
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = "계속 생존하기 ($countdown)",
-                    fontWeight = FontWeight.SemiBold,
-                    color = BackgroundBlack
-                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // 확인 버튼
+                Button(
+                    onClick = onDismiss,
+                    colors = ButtonDefaults.buttonColors(containerColor = EliteGreen),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "계속 생존하기 ($countdown)",
+                        fontWeight = FontWeight.SemiBold,
+                        color = BackgroundBlack
+                    )
+                }
             }
         }
-    )
+    }
 }
 
 @Composable

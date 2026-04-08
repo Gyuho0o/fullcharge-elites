@@ -22,8 +22,9 @@ class ChatRepository {
     private val tokensRef: DatabaseReference = database.getReference("fcm_tokens")
     private val connectedRef: DatabaseReference = database.getReference(".info/connected")
 
-    // 최근 50개 메시지만 유지
-    private val messageLimit = 50
+    // Firebase에서 가져올 메시지 수 (시스템 메시지 포함이므로 넉넉하게)
+    // 실제 표시되는 사용자 메시지는 필터링 후 결정
+    private val messageLimit = 150
 
     // 입장 시간 (이 시간 이후의 메시지만 표시)
     private var joinedAt: Long = 0L
@@ -46,7 +47,7 @@ class ChatRepository {
                         val msgText = child.child("message").getValue(String::class.java) ?: ""
                         val timestamp = child.child("timestamp").getValue(Long::class.java) ?: 0L
                         val rank = child.child("rank").getValue(String::class.java) ?: EliteRank.TRAINEE.name
-                        val isSystemMessage = child.child("isSystemMessage").value == true
+                        val isSystemMessage = child.child("isSystemMessage").getValue(Boolean::class.java) ?: false
 
                         // readBy
                         val readBy = child.child("readBy").children
@@ -67,7 +68,7 @@ class ChatRepository {
                         }
 
                         // 투표 관련
-                        val isPoll = child.child("isPoll").value == true
+                        val isPoll = child.child("isPoll").getValue(Boolean::class.java) ?: false
                         val pollQuestion = child.child("pollQuestion").getValue(String::class.java)
                         val pollOptions = child.child("pollOptions").children
                             .mapNotNull { it.getValue(String::class.java) }
@@ -115,16 +116,41 @@ class ChatRepository {
                     }
                 }
 
-                // 입장 이후 메시지 + 입장 이전 최근 30개 메시지
+                // 메시지 정렬 (timestamp 기준)
                 val sortedMessages = messages.sortedBy { it.timestamp }
+
+                // 디버깅: 모든 메시지 표시 (필터링 없이)
+                // TODO: 테스트 후 원래 필터링 로직으로 복원
+                android.util.Log.d("ChatRepository", "Total messages from Firebase: ${messages.size}, joinedAt: $joinedAt")
+                messages.forEach { msg ->
+                    android.util.Log.d("ChatRepository", "Message: id=${msg.id}, timestamp=${msg.timestamp}, isSystem=${msg.isSystemMessage}, text=${msg.message.take(30)}")
+                }
+
+                // 입장 전 메시지: 합류/퇴장 알림 시스템 메시지만 제외하고 최근 50개
+                val messagesBeforeJoin = if (joinedAt <= 0) {
+                    emptyList()
+                } else {
+                    sortedMessages
+                        .filter { msg ->
+                            msg.timestamp < joinedAt &&
+                            // 합류/퇴장 알림 시스템 메시지만 제외 (일반 채팅 + 승급/위기탈출 메시지는 포함)
+                            !(msg.isSystemMessage && (msg.message.contains("합류했습니다") ||
+                                                       msg.message.contains("퇴장했습니다") ||
+                                                       msg.message.contains("배신했습니다") ||
+                                                       msg.message.contains("복귀했습니다")))
+                        }
+                        .takeLast(50)
+                }
+
+                // 입장 후 메시지: 모두 표시
                 val messagesAfterJoin = sortedMessages.filter { it.timestamp >= joinedAt }
-                val messagesBeforeJoin = sortedMessages
-                    .filter { it.timestamp < joinedAt && !it.isSystemMessage }
-                    .takeLast(30)
 
                 val filteredMessages = (messagesBeforeJoin + messagesAfterJoin)
                     .distinctBy { it.id }
                     .sortedBy { it.timestamp }
+
+                android.util.Log.d("ChatRepository", "Filtered messages: ${filteredMessages.size} (before: ${messagesBeforeJoin.size}, after: ${messagesAfterJoin.size})")
+
                 trySend(filteredMessages)
             }
 
@@ -133,11 +159,11 @@ class ChatRepository {
             }
         }
 
-        messagesRef.orderByChild("timestamp").limitToLast(messageLimit)
-            .addValueEventListener(listener)
+        val query = messagesRef.orderByChild("timestamp").limitToLast(messageLimit)
+        query.addValueEventListener(listener)
 
         awaitClose {
-            messagesRef.removeEventListener(listener)
+            query.removeEventListener(listener)
         }
     }
 
@@ -284,18 +310,55 @@ class ChatRepository {
     // 연결 끊김 시 전송할 퇴장 메시지 키 (취소용)
     private var disconnectMessageKey: String? = null
 
-    suspend fun joinChat(userId: String, nickname: String, isAdmin: Boolean = false) {
+    /**
+     * 채팅방 입장
+     * @param forceSessionStartTime 세션 시작 시간을 강제로 설정 (복구 모드용)
+     * @return 실제 적용된 sessionStartTime
+     */
+    suspend fun joinChat(
+        userId: String,
+        nickname: String,
+        isAdmin: Boolean = false,
+        forceSessionStartTime: Long? = null
+    ): Long {
         // 재연결 시 핸들러 재설정을 위해 사용자 정보 저장
         if (!isAdmin) {
             currentUserId = userId
             currentNickname = nickname
         }
 
+        val currentTime = System.currentTimeMillis()
+
+        val sessionStartTime: Long = when {
+            // 강제 설정된 시간이 있으면 사용 (복구 모드)
+            forceSessionStartTime != null -> forceSessionStartTime
+
+            else -> {
+                // 기존 사용자 정보 확인 (세션 유지를 위해)
+                val existingSnapshot = usersRef.child(userId).get().await()
+                val existingStartTime = existingSnapshot.child("sessionStartTime").getValue(Long::class.java)
+                val existingLastActive = existingSnapshot.child("lastActiveTime").getValue(Long::class.java) ?: 0L
+
+                // 기존 세션이 있고 최근에 활동했다면 (10분 이내) 세션 유지
+                val isRecentSession = existingStartTime != null &&
+                                      existingStartTime > 0 &&
+                                      (currentTime - existingLastActive) < 10 * 60 * 1000  // 10분 이내
+
+                if (isRecentSession) {
+                    // 기존 세션 유지 - sessionStartTime 보존
+                    existingStartTime!!
+                } else {
+                    // 새 세션 시작
+                    currentTime
+                }
+            }
+        }
+
         val user = EliteUser(
             userId = userId,
             nickname = nickname,
-            sessionStartTime = System.currentTimeMillis(),
-            lastActiveTime = System.currentTimeMillis(),
+            sessionStartTime = sessionStartTime,
+            lastActiveTime = currentTime,
             isOnline = true,
             isAdmin = isAdmin
         )
@@ -305,6 +368,8 @@ class ChatRepository {
         if (!isAdmin) {
             setupDisconnectHandlers(userId, nickname)
         }
+
+        return sessionStartTime
     }
 
     /**
@@ -405,8 +470,8 @@ class ChatRepository {
             override fun onDataChange(snapshot: DataSnapshot) {
                 val count = snapshot.children.count { child ->
                     try {
-                        val isOnline = child.child("isOnline").value == true
-                        val isAdmin = child.child("isAdmin").value == true
+                        val isOnline = child.child("isOnline").getValue(Boolean::class.java) ?: false
+                        val isAdmin = child.child("isAdmin").getValue(Boolean::class.java) ?: false
                         // isOnline인 사용자만 (관리자 제외) - onDisconnect로 오프라인 상태 자동 관리됨
                         isOnline && !isAdmin
                     } catch (e: Exception) {

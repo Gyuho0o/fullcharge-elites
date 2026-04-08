@@ -91,6 +91,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var timeEventJob: Job? = null
     private var reportsObserverJob: Job? = null
     private var connectionMonitorJob: Job? = null
+    private var messageObserverJob: Job? = null
+    private var onlineUsersObserverJob: Job? = null
 
     // 시간 기반 이벤트 추적
     private var lastCheckedHour = -1
@@ -297,20 +299,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // (isElite 체크는 UI에서 이미 함)
 
         viewModelScope.launch {
-            // 세션 시작 시간 설정
-            val startTime = System.currentTimeMillis()
+            val currentTime = System.currentTimeMillis()
 
             // 입장 시간 설정 (이 시간 이후 메시지만 표시)
-            chatRepository.setJoinedTime(startTime)
+            chatRepository.setJoinedTime(currentTime)
 
-            // Firebase에 입장 등록
-            chatRepository.joinChat(state.userId, state.nickname)
+            // Firebase에 입장 등록 (기존 세션이 있으면 유지됨)
+            val sessionStartTime = chatRepository.joinChat(state.userId, state.nickname)
+
+            // 새 세션인지 확인 (세션 시작 시간이 현재와 같으면 새 세션)
+            val isNewSession = sessionStartTime == currentTime ||
+                               (currentTime - sessionStartTime) < 1000  // 1초 이내면 새 세션
 
             // FCM 토큰 등록
             registerFcmToken(state.userId)
 
-            // 입장 알림 시스템 메시지 전송
-            chatRepository.sendSystemMessage("${state.nickname}님이 전우회에 합류했습니다")
+            // 새 세션일 때만 입장 알림 전송
+            if (isNewSession) {
+                chatRepository.sendSystemMessage("${state.nickname}님이 전우회에 합류했습니다")
+            }
 
             // 세션 시작
             preferences.startSession()
@@ -319,7 +326,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 it.copy(
                     currentScreen = AppScreen.CHAT,
                     isInChat = true,
-                    sessionStartTime = startTime
+                    sessionStartTime = sessionStartTime
                 )
             }
 
@@ -345,7 +352,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             startConnectionMonitoring()
 
             // 백그라운드 서비스 시작 (온라인 상태 유지)
-            startBackgroundService(startTime)
+            startBackgroundService(sessionStartTime)
         }
     }
 
@@ -365,8 +372,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             // 입장 시간 설정 (이 시간 이후 메시지만 표시)
             chatRepository.setJoinedTime(System.currentTimeMillis())
 
-            // Firebase에 입장 등록
-            chatRepository.joinChat(state.userId, state.nickname)
+            // Firebase에 입장 등록 (복구 모드: 세션 시작 시간 강제 설정)
+            chatRepository.joinChat(
+                userId = state.userId,
+                nickname = state.nickname,
+                forceSessionStartTime = adjustedStartTime
+            )
 
             // 입장 알림 시스템 메시지 전송 (다른 사용자들에게 표시)
             val rank = EliteRank.fromDuration(previousDuration)
@@ -431,7 +442,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun startMessageObservation(preserveLocalMessages: Boolean = false) {
-        viewModelScope.launch {
+        messageObserverJob?.cancel()
+        messageObserverJob = viewModelScope.launch {
             chatRepository.getMessages().collect { firebaseMessages ->
                 _uiState.update { currentState ->
                     val finalMessages = if (preserveLocalMessages) {
@@ -465,7 +477,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun startOnlineUsersObservation() {
-        viewModelScope.launch {
+        onlineUsersObserverJob?.cancel()
+        onlineUsersObserverJob = viewModelScope.launch {
             chatRepository.getOnlineUsers().collect { users ->
                 val state = _uiState.value
                 // 현재 사용자가 목록에 없으면 추가 (Firebase 동기화 지연 대응)
@@ -767,13 +780,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             // 세션 종료
             preferences.endSession()
 
-            // 타이머 정지
+            // 타이머 및 옵저버 정지
             sessionTimerJob?.cancel()
             batteryMonitorJob?.cancel()
             activityUpdateJob?.cancel()
             timeEventJob?.cancel()
             reportsObserverJob?.cancel()
             connectionMonitorJob?.cancel()
+            messageObserverJob?.cancel()
+            onlineUsersObserverJob?.cancel()
 
             // 백그라운드 서비스 종료 (퇴장 메시지는 이미 전송됨)
             stopBackgroundService()
@@ -834,7 +849,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             // 세션 종료
             preferences.endSession()
 
-            // 타이머 정지
+            // 타이머 및 옵저버 정지
             sessionTimerJob?.cancel()
             batteryMonitorJob?.cancel()
             dangerCountdownJob?.cancel()
@@ -842,6 +857,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             timeEventJob?.cancel()
             reportsObserverJob?.cancel()
             connectionMonitorJob?.cancel()
+            messageObserverJob?.cancel()
+            onlineUsersObserverJob?.cancel()
 
             // 백그라운드 서비스 종료 (정상 종료이므로 퇴장 메시지 없음)
             stopBackgroundServiceGracefully()
@@ -1201,7 +1218,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val adjustedStartTime = System.currentTimeMillis() - generalDuration
 
             chatRepository.setJoinedTime(System.currentTimeMillis())
-            chatRepository.joinChat(state.userId, ADMIN_NICKNAME, isAdmin = true)
+            chatRepository.joinChat(
+                userId = state.userId,
+                nickname = ADMIN_NICKNAME,
+                isAdmin = true,
+                forceSessionStartTime = adjustedStartTime
+            )
 
             preferences.startSession()
 
@@ -1431,5 +1453,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         activityUpdateJob?.cancel()
         timeEventJob?.cancel()
         reportsObserverJob?.cancel()
+        connectionMonitorJob?.cancel()
+        messageObserverJob?.cancel()
+        onlineUsersObserverJob?.cancel()
     }
 }
