@@ -382,14 +382,14 @@ class ChatRepository {
     /**
      * 재접속 시 최근 배신 메시지 정리
      * 앱 재빌드/재실행 시 onDisconnect가 발동되어 배신 메시지가 생성될 수 있음
-     * 1분 이내의 본인 배신 메시지를 삭제
+     * 5분 이내의 본인 배신 메시지를 삭제
      */
     private suspend fun cleanupRecentBetrayalMessage(nickname: String, currentTime: Long) {
         try {
-            val oneMinuteAgo = currentTime - 60 * 1000
+            val fiveMinutesAgo = currentTime - 5 * 60 * 1000
             val recentMessages = messagesRef
                 .orderByChild("timestamp")
-                .startAt(oneMinuteAgo.toDouble())
+                .startAt(fiveMinutesAgo.toDouble())
                 .get()
                 .await()
 
@@ -489,6 +489,14 @@ class ChatRepository {
     suspend fun updateUserNickname(userId: String, nickname: String) {
         usersRef.child(userId).child("nickname")
             .setValue(nickname).await()
+
+        // 현재 닉네임 업데이트 (onDisconnect 핸들러에서 사용)
+        if (userId == currentUserId) {
+            currentNickname = nickname
+            // onDisconnect 핸들러 재설정 (새 닉네임으로)
+            cancelDisconnectHandlers(userId)
+            setupDisconnectHandlers(userId, nickname)
+        }
     }
 
     suspend fun markMessagesAsRead(messageIds: List<String>, userId: String) {
