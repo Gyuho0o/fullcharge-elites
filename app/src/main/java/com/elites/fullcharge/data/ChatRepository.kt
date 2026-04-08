@@ -366,12 +366,45 @@ class ChatRepository {
         )
         usersRef.child(userId).setValue(user).await()
 
+        // 재접속 시 최근 1분 이내의 본인 배신 메시지 삭제 (앱 재빌드/재실행 시 onDisconnect가 발동되어 생성된 메시지)
+        if (!isAdmin) {
+            cleanupRecentBetrayalMessage(nickname, currentTime)
+        }
+
         // 관리자가 아닌 경우에만 연결 끊김 핸들러 설정
         if (!isAdmin) {
             setupDisconnectHandlers(userId, nickname)
         }
 
         return sessionStartTime
+    }
+
+    /**
+     * 재접속 시 최근 배신 메시지 정리
+     * 앱 재빌드/재실행 시 onDisconnect가 발동되어 배신 메시지가 생성될 수 있음
+     * 1분 이내의 본인 배신 메시지를 삭제
+     */
+    private suspend fun cleanupRecentBetrayalMessage(nickname: String, currentTime: Long) {
+        try {
+            val oneMinuteAgo = currentTime - 60 * 1000
+            val recentMessages = messagesRef
+                .orderByChild("timestamp")
+                .startAt(oneMinuteAgo.toDouble())
+                .get()
+                .await()
+
+            recentMessages.children.forEach { snapshot ->
+                val message = snapshot.child("message").getValue(String::class.java) ?: return@forEach
+                val isSystem = snapshot.child("isSystemMessage").getValue(Boolean::class.java) ?: false
+
+                // 본인의 배신 메시지인 경우 삭제
+                if (isSystem && message.contains(nickname) && message.contains("배신했습니다")) {
+                    snapshot.ref.removeValue().await()
+                }
+            }
+        } catch (e: Exception) {
+            // 실패해도 무시 (치명적이지 않음)
+        }
     }
 
     /**

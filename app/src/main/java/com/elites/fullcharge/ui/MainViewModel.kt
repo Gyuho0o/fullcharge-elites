@@ -337,7 +337,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             // FCM 토큰 등록
             registerFcmToken(state.userId)
 
-            // 입장 알림은 플로팅 UI로 대체 (시스템 메시지 전송 없음)
+            // 입장 시스템 메시지 전송
+            chatRepository.sendSystemMessage("${state.nickname} 전우가 합류했습니다")
 
             // 세션 시작
             preferences.startSession()
@@ -402,7 +403,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 forceSessionStartTime = adjustedStartTime
             )
 
-            // 입장 알림은 플로팅 UI로 대체 (시스템 메시지 전송 없음)
+            // 입장 시스템 메시지 전송
+            chatRepository.sendSystemMessage("${state.nickname} 전우가 합류했습니다")
 
             // 세션 시작 (조정된 시간으로)
             preferences.startSession()

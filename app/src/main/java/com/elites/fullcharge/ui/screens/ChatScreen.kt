@@ -110,6 +110,7 @@ fun ChatScreen(
     var showAdmin by remember { mutableStateOf(false) }
     var showLeaveConfirmDialog by remember { mutableStateOf(false) }
     var showNicknameDialog by remember { mutableStateOf(false) }
+    var showEmojiPicker by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
 
     // 대기 중인 신고 수 계산
@@ -284,11 +285,32 @@ fun ChatScreen(
                 onValueChange = { messageInput = it },
                 onSend = {
                     if (messageInput.isNotBlank()) {
-                        onSendMessage(messageInput.trim())
+                        // 계급에 맞지 않는 이모지 태그 제거 후 전송
+                        val filteredMessage = RankEmoji.filterUnauthorizedEmojis(
+                            messageInput.trim(),
+                            currentRank
+                        )
+                        if (filteredMessage.isNotBlank()) {
+                            onSendMessage(filteredMessage)
+                        }
                         messageInput = ""
                     }
                 },
+                currentRank = currentRank,
+                onEmojiClick = { showEmojiPicker = true },
                 modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars)
+            )
+        }
+
+        // ===== EMOJI PICKER BOTTOM SHEET =====
+        if (showEmojiPicker) {
+            EmojiPickerSheet(
+                currentRank = currentRank,
+                onEmojiSelected = { emoji ->
+                    messageInput = messageInput + "[emoji:${emoji.id}]"
+                    showEmojiPicker = false
+                },
+                onDismiss = { showEmojiPicker = false }
             )
         }
 
@@ -1480,11 +1502,12 @@ private fun UserMessage(
                     )
                     .padding(12.dp)
             ) {
-                Text(
+                MessageTextWithEmoji(
                     text = message.message,
                     fontSize = 14.sp,
                     lineHeight = 22.sp,
-                    color = if (isMine) BackgroundBlack else ForegroundWhite
+                    color = if (isMine) BackgroundBlack else ForegroundWhite,
+                    isMine = isMine
                 )
             }
 
@@ -1668,9 +1691,12 @@ private fun MessageInputSection(
     value: String,
     onValueChange: (String) -> Unit,
     onSend: () -> Unit,
+    currentRank: EliteRank = EliteRank.TRAINEE,
+    onEmojiClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val hasText = value.isNotBlank()
+    val canUseEmoji = RankEmoji.canUseEmoji(currentRank)
 
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -1693,6 +1719,25 @@ private fun MessageInputSection(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)  // v0: gap-2
             ) {
+                // Emoji Button (하사 이상만 활성화)
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(
+                            if (canUseEmoji) MutedBlack
+                            else MutedBlack.copy(alpha = 0.3f)
+                        )
+                        .clickable(enabled = canUseEmoji) { onEmojiClick() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = if (canUseEmoji) "😊" else "🔒",
+                        fontSize = 20.sp,
+                        color = if (canUseEmoji) ForegroundWhite else ForegroundMuted
+                    )
+                }
+
                 // v0: Input flex-1 bg-input border-border/50
                 OutlinedTextField(
                     value = value,
@@ -1700,7 +1745,8 @@ private fun MessageInputSection(
                     modifier = Modifier.weight(1f),
                     placeholder = {
                         Text(
-                            text = "메시지를 입력하십시오...",
+                            text = if (canUseEmoji) "메시지를 입력하십시오..."
+                                   else "하사 이상부터 이모지 사용 가능",
                             color = ForegroundMuted,
                             fontSize = 14.sp
                         )
@@ -3295,4 +3341,294 @@ private fun getTimeAgo(timestamp: Long): String {
             sdf.format(Date(timestamp))
         }
     }
+}
+
+// ===== EMOJI PICKER BOTTOM SHEET =====
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun EmojiPickerSheet(
+    currentRank: EliteRank,
+    onEmojiSelected: (RankEmoji.EmojiItem) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val availableEmojis = RankEmoji.getAvailableEmojis(currentRank)
+    val allEmojis = RankEmoji.getAllEmojis()
+    val sheetState = rememberModalBottomSheetState()
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = CardBlack,
+        dragHandle = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Box(
+                    modifier = Modifier
+                        .width(40.dp)
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(ForegroundMuted)
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "계급 전용 이모지",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = ForegroundWhite
+                )
+                Text(
+                    text = "현재 계급: ${currentRank.koreanName}",
+                    fontSize = 12.sp,
+                    color = ForegroundMuted
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+        }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 32.dp)
+        ) {
+            // 사용 가능한 이모지 (부사관용)
+            if (currentRank.ordinal >= EliteRank.STAFF_SERGEANT.ordinal) {
+                EmojiSection(
+                    title = "부사관 이모지",
+                    titleColor = Color(0xFF3B82F6),
+                    emojis = allEmojis.filter { it.id in 1..6 },
+                    availableEmojis = availableEmojis,
+                    onEmojiSelected = onEmojiSelected
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+
+            // 위관급 이모지
+            EmojiSection(
+                title = "위관급 이모지",
+                titleColor = Color(0xFF10B981),
+                emojis = allEmojis.filter { it.id in 7..10 },
+                availableEmojis = availableEmojis,
+                onEmojiSelected = onEmojiSelected,
+                lockedMessage = if (currentRank.ordinal < EliteRank.SECOND_LIEUTENANT.ordinal)
+                    "소위 이상 사용 가능" else null
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // 영관급 이모지
+            EmojiSection(
+                title = "영관급 이모지",
+                titleColor = Color(0xFF7C3AED),
+                emojis = allEmojis.filter { it.id in 11..14 },
+                availableEmojis = availableEmojis,
+                onEmojiSelected = onEmojiSelected,
+                lockedMessage = if (currentRank.ordinal < EliteRank.MAJOR.ordinal)
+                    "소령 이상 사용 가능" else null
+            )
+        }
+    }
+}
+
+@Composable
+private fun EmojiSection(
+    title: String,
+    titleColor: Color,
+    emojis: List<RankEmoji.EmojiItem>,
+    availableEmojis: List<RankEmoji.EmojiItem>,
+    onEmojiSelected: (RankEmoji.EmojiItem) -> Unit,
+    lockedMessage: String? = null
+) {
+    Column {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = title,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = titleColor
+            )
+            if (lockedMessage != null) {
+                Text(
+                    text = "🔒 $lockedMessage",
+                    fontSize = 11.sp,
+                    color = ForegroundMuted
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            emojis.forEach { emoji ->
+                val isAvailable = availableEmojis.any { it.id == emoji.id }
+                EmojiButton(
+                    emoji = emoji,
+                    isAvailable = isAvailable,
+                    onClick = { if (isAvailable) onEmojiSelected(emoji) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmojiButton(
+    emoji: RankEmoji.EmojiItem,
+    isAvailable: Boolean,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .size(56.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(
+                if (isAvailable) MutedBlack
+                else MutedBlack.copy(alpha = 0.3f)
+            )
+            .then(
+                if (isAvailable) Modifier.clickable { onClick() }
+                else Modifier
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        androidx.compose.foundation.Image(
+            painter = androidx.compose.ui.res.painterResource(id = emoji.drawableResId),
+            contentDescription = emoji.displayName,
+            modifier = Modifier
+                .size(40.dp)
+                .graphicsLayer {
+                    alpha = if (isAvailable) 1f else 0.3f
+                }
+        )
+        if (!isAvailable) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.5f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "🔒",
+                    fontSize = 16.sp
+                )
+            }
+        }
+    }
+}
+
+// ===== MESSAGE TEXT WITH EMOJI =====
+// [emoji:X] 태그를 이미지로 변환하여 렌더링
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun MessageTextWithEmoji(
+    text: String,
+    color: Color,
+    fontSize: androidx.compose.ui.unit.TextUnit = 14.sp,
+    lineHeight: androidx.compose.ui.unit.TextUnit = 22.sp,
+    isMine: Boolean = false
+) {
+    // 이모지 태그 패턴: [emoji:숫자]
+    val emojiPattern = "\\[emoji:(\\d+)]".toRegex()
+    val parts = mutableListOf<MessagePart>()
+    var lastIndex = 0
+
+    emojiPattern.findAll(text).forEach { match ->
+        // 이모지 태그 앞의 텍스트
+        if (match.range.first > lastIndex) {
+            parts.add(MessagePart.TextPart(text.substring(lastIndex, match.range.first)))
+        }
+        // 이모지 ID
+        val emojiId = match.groupValues[1].toIntOrNull()
+        if (emojiId != null) {
+            parts.add(MessagePart.EmojiPart(emojiId))
+        }
+        lastIndex = match.range.last + 1
+    }
+    // 나머지 텍스트
+    if (lastIndex < text.length) {
+        parts.add(MessagePart.TextPart(text.substring(lastIndex)))
+    }
+
+    // 이모지가 없으면 일반 텍스트로 렌더링
+    if (parts.none { it is MessagePart.EmojiPart }) {
+        Text(
+            text = text,
+            fontSize = fontSize,
+            lineHeight = lineHeight,
+            color = color
+        )
+        return
+    }
+
+    // 이모지가 있으면 FlowRow로 렌더링
+    androidx.compose.foundation.layout.FlowRow(
+        horizontalArrangement = Arrangement.Start,
+        verticalArrangement = Arrangement.Center
+    ) {
+        parts.forEach { part ->
+            when (part) {
+                is MessagePart.TextPart -> {
+                    Text(
+                        text = part.text,
+                        fontSize = fontSize,
+                        lineHeight = lineHeight,
+                        color = color
+                    )
+                }
+                is MessagePart.EmojiPart -> {
+                    val drawableResId = RankEmoji.getEmojiDrawableResId(part.emojiId)
+                    if (drawableResId != null) {
+                        // 부사관: 48dp (정사각형), 위관급/영���급: 원본 비율
+                        val isOfficerEmoji = part.emojiId in 7..14
+                        val emojiWidth = when (part.emojiId) {
+                            in 7..10 -> 192.dp  // 위관급 (원본 비율)
+                            in 11..14 -> 320.dp // 영관급 (원본 비율, 위관급보다 큼)
+                            else -> 48.dp       // 부사관
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .padding(horizontal = 2.dp)
+                                .then(
+                                    if (isOfficerEmoji) Modifier.wrapContentSize()
+                                    else Modifier.size(emojiWidth + 4.dp)
+                                )
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(
+                                    if (isMine) Color.Black.copy(alpha = 0.3f)
+                                    else Color.Transparent
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            androidx.compose.foundation.Image(
+                                painter = androidx.compose.ui.res.painterResource(id = drawableResId),
+                                contentDescription = "이모지",
+                                contentScale = if (isOfficerEmoji)
+                                    androidx.compose.ui.layout.ContentScale.Fit
+                                else
+                                    androidx.compose.ui.layout.ContentScale.Crop,
+                                modifier = if (isOfficerEmoji)
+                                    Modifier.width(emojiWidth)
+                                else
+                                    Modifier.size(emojiWidth)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private sealed class MessagePart {
+    data class TextPart(val text: String) : MessagePart()
+    data class EmojiPart(val emojiId: Int) : MessagePart()
 }
