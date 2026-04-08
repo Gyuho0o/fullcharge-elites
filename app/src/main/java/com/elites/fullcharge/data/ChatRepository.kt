@@ -338,10 +338,13 @@ class ChatRepository {
                 val existingSnapshot = usersRef.child(userId).get().await()
                 val existingStartTime = existingSnapshot.child("sessionStartTime").getValue(Long::class.java)
                 val existingLastActive = existingSnapshot.child("lastActiveTime").getValue(Long::class.java) ?: 0L
+                val wasAdmin = existingSnapshot.child("isAdmin").getValue(Boolean::class.java) ?: false
 
                 // 기존 세션이 있고 최근에 활동했다면 (10분 이내) 세션 유지
+                // 단, 이전 세션이 관리자 세션이었으면 새 세션 시작 (관리자 계급 유지 방지)
                 val isRecentSession = existingStartTime != null &&
                                       existingStartTime > 0 &&
+                                      !wasAdmin &&  // 관리자 세션이었으면 새로 시작
                                       (currentTime - existingLastActive) < 10 * 60 * 1000  // 10분 이내
 
                 if (isRecentSession) {
@@ -392,7 +395,7 @@ class ChatRepository {
             "id" to messageKey,
             "userId" to "SYSTEM",
             "nickname" to "시스템",
-            "message" to "${nickname}님이 전우회를 배신했습니다",
+            "message" to "${nickname} 전우가 배터리 관리 소홀로 전우회를 배신했습니다",
             "timestamp" to com.google.firebase.database.ServerValue.TIMESTAMP,
             "rank" to "TRAINEE",
             "isSystemMessage" to true
@@ -423,10 +426,20 @@ class ChatRepository {
         disconnectMessageKey = null
     }
 
-    suspend fun leaveChat(userId: String) {
+    suspend fun leaveChat(userId: String, wasAdmin: Boolean = false) {
         // 정상 종료 시 onDisconnect 핸들러 취소
         cancelDisconnectHandlers(userId)
-        usersRef.child(userId).child("isOnline").setValue(false).await()
+
+        if (wasAdmin) {
+            // 관리자 세션 종료 시 세션 데이터 완전 초기화 (일반 유저 접속 시 계급 유지 방지)
+            usersRef.child(userId).updateChildren(mapOf(
+                "isOnline" to false,
+                "isAdmin" to false,
+                "sessionStartTime" to 0L
+            )).await()
+        } else {
+            usersRef.child(userId).child("isOnline").setValue(false).await()
+        }
 
         // 사용자 정보 클리어
         currentUserId = null

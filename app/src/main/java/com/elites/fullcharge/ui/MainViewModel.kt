@@ -834,8 +834,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             // 퇴장 알림은 플로팅 UI로 대체 (시스템 메시지 전송 없음)
 
-            // Firebase에서 퇴장 처리
-            chatRepository.leaveChat(state.userId)
+            // Firebase에서 퇴장 처리 (관리자였으면 세션 데이터 완전 초기화)
+            chatRepository.leaveChat(state.userId, wasAdmin = wasAdminMode)
 
             // 세션 종료
             preferences.endSession()
@@ -903,8 +903,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             // FCM 토큰 삭제
             unregisterFcmToken(state.userId)
 
-            // Firebase에서 퇴장 처리
-            chatRepository.leaveChat(state.userId)
+            // Firebase에서 퇴장 처리 (관리자였으면 세션 데이터 완전 초기화)
+            chatRepository.leaveChat(state.userId, wasAdmin = wasAdminMode)
 
             // 세션 종료
             preferences.endSession()
@@ -1230,7 +1230,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private const val RATE_LIMIT_WINDOW_MS = 10000L
         private const val RATE_LIMIT_MAX_MESSAGES = 5
         // 관리자 비밀번호 (실제 운영에서는 더 안전한 방법 권장)
-        private const val ADMIN_PASSWORD = "elite2024!"
+        private const val ADMIN_PASSWORD = "3636"
         private const val ADMIN_NICKNAME = "전우회장"
     }
 
