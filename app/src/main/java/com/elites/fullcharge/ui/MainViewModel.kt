@@ -469,12 +469,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         messageObserverJob = viewModelScope.launch {
             chatRepository.getMessages().collect { firebaseMessages ->
                 _uiState.update { currentState ->
+                    // 현재 온라인 사용자 닉네임 목록
+                    val onlineNicknames = currentState.onlineUsers.map { it.nickname }.toSet()
+
+                    // 온라인 사용자의 배신 메시지 필터링
+                    val filteredMessages = firebaseMessages.filter { message ->
+                        if (message.isSystemMessage && message.message.contains("배신했습니다")) {
+                            // 배신 메시지에서 닉네임 추출 후 온라인 여부 확인
+                            val isOnlineUserBetrayal = onlineNicknames.any { nickname ->
+                                message.message.contains(nickname)
+                            }
+                            !isOnlineUserBetrayal  // 온라인 사용자의 배신 메시지는 제외
+                        } else {
+                            true  // 다른 메시지는 유지
+                        }
+                    }
+
                     val finalMessages = if (preserveLocalMessages) {
                         // 로컬 메시지 (id가 "local_"로 시작) 유지하고 Firebase 메시지와 병합
                         val localMessages = currentState.messages.filter { it.id.startsWith("local_") }
-                        (localMessages + firebaseMessages).sortedBy { it.timestamp }
+                        (localMessages + filteredMessages).sortedBy { it.timestamp }
                     } else {
-                        firebaseMessages
+                        filteredMessages
                     }
                     currentState.copy(messages = finalMessages)
                 }
