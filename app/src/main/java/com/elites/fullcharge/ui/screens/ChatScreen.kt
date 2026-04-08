@@ -980,10 +980,13 @@ private fun RankingBoardPanel(
             // 실시간: 모든 접속자 (관리자 제외), 역대: 50위까지
             val items = if (page == 0) {
                 liveRanking
-                    .filter { !it.isAdmin }  // 관리자 제외
+                    .filter { !it.isAdmin && it.nickname != "전우회장" }  // 관리자 제외
                     .sortedByDescending { it.sessionDuration }
             } else {
-                allTimeRanking.sortedByDescending { it.durationMillis }.take(50)
+                allTimeRanking
+                    .filter { it.nickname != "전우회장" }  // 역대 랭킹에서도 관리자 제외
+                    .sortedByDescending { it.durationMillis }
+                    .take(50)
             }
 
             if (items.isEmpty()) {

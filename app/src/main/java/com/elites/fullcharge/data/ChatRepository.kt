@@ -291,7 +291,9 @@ class ChatRepository {
                     }
                 }.filter { user ->
                     // isOnline인 사용자만 (관리자 제외) - onDisconnect로 오프라인 상태 자동 관리됨
-                    user.isOnline && !user.isAdmin
+                    // 닉네임 "전우회장"도 관리자로 간주하여 제외
+                    val isAdminByNickname = user.nickname == "전우회장"
+                    user.isOnline && !user.isAdmin && !isAdminByNickname
                 }
                 trySend(users)
             }
