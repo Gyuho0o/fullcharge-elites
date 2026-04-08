@@ -157,10 +157,8 @@ class MainActivity : ComponentActivity() {
                         onEnterPortal = { viewModel.enterChat() },
                         onSendMessage = { viewModel.sendMessage(it) },
                         onLeaveChat = {
-                            // 광고 표시 후 퇴장 처리
-                            adManager.showInterstitialAd(this@MainActivity) {
-                                viewModel.leaveChat()
-                            }
+                            // 자발적 퇴장은 광고 없이 바로 퇴장
+                            viewModel.leaveChat()
                         },
                         onNicknameChange = { viewModel.changeNickname(it) },
                         onReportMessage = { message, reason, onResult ->
@@ -214,7 +212,15 @@ class MainActivity : ComponentActivity() {
                         onDeleteMessage = { messageId -> viewModel.deleteMessage(messageId) },
                         onHandleReport = { reportId, messageId, deleteMsg -> viewModel.handleReport(reportId, messageId, deleteMsg) },
                         onDismissReport = { reportId -> viewModel.dismissReport(reportId) },
-                        onShowOnboarding = { viewModel.showOnboarding() }
+                        onShowOnboarding = { viewModel.showOnboarding() },
+                        onRequestSupply = {
+                            // 리워드 광고 표시 후 30초 추가
+                            adManager.showRewardedAd(
+                                activity = this@MainActivity,
+                                onRewarded = { viewModel.extendDangerCountdown() },
+                                onAdDismissed = { /* 광고 닫힌 후 추가 작업 없음 */ }
+                            )
+                        }
                     )
                     }
                 }
@@ -256,7 +262,8 @@ class MainActivity : ComponentActivity() {
         onDeleteMessage: (String) -> Unit,
         onHandleReport: (String, String, Boolean) -> Unit,
         onDismissReport: (String) -> Unit,
-        onShowOnboarding: () -> Unit
+        onShowOnboarding: () -> Unit,
+        onRequestSupply: () -> Unit
     ) {
         AnimatedContent(
             targetState = uiState.currentScreen,
@@ -329,6 +336,8 @@ class MainActivity : ComponentActivity() {
                         onVotePoll = onVotePoll,
                         isInDanger = uiState.isInDanger,
                         dangerCountdown = uiState.dangerCountdown,
+                        supplyUsed = uiState.supplyUsed,
+                        onRequestSupply = onRequestSupply,
                         bannerAdContent = bannerAdContent,
                         newlyUnlockedAchievement = uiState.newlyUnlockedAchievement,
                         onDismissAchievement = onDismissAchievement,
@@ -357,6 +366,7 @@ class MainActivity : ComponentActivity() {
                 AppScreen.EXILE -> {
                     ExileScreen(
                         sessionDuration = uiState.sessionDuration,
+                        currentBatteryLevel = uiState.batteryState.level,
                         onDismiss = onExileDismiss
                     )
                 }

@@ -47,6 +47,7 @@ data class MainUiState(
     val isInDanger: Boolean = false,
     val dangerCountdown: Int = 0,  // 남은 초
     val dangerStartTime: Long = 0L,
+    val supplyUsed: Boolean = false,  // 긴급 보급 사용 여부 (세션당 1회)
     // 필터링 에러 메시지
     val filterErrorMessage: String? = null,
     // 답장 중인 메시지
@@ -183,6 +184,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun startDangerCountdown() {
+        // 보급 받은 상태에서 카운트다운이 진행 중이면 리셋하지 않음
+        if (_uiState.value.supplyUsed && dangerCountdownJob?.isActive == true) {
+            return
+        }
+
         dangerCountdownJob?.cancel()
 
         val startTime = System.currentTimeMillis()
@@ -246,6 +252,35 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun dismissCrisisEscapeCelebration() {
         _uiState.update { it.copy(showCrisisEscapeCelebration = false) }
+    }
+
+    /**
+     * 긴급 보급 - 카운트다운 60초(1분) 추가 (세션당 1회)
+     */
+    fun extendDangerCountdown() {
+        if (_uiState.value.supplyUsed) return  // 이미 사용함
+
+        dangerCountdownJob?.cancel()
+
+        _uiState.update {
+            it.copy(
+                dangerCountdown = 60,
+                supplyUsed = true
+            )
+        }
+
+        // 60초 카운트다운 재시작
+        dangerCountdownJob = viewModelScope.launch {
+            var remaining = 60
+            while (remaining > 0) {
+                delay(1000)
+                remaining--
+                _uiState.update { it.copy(dangerCountdown = remaining) }
+            }
+
+            // 카운트다운 종료 - 퇴장
+            triggerExile(reason = "시간 초과!")
+        }
     }
 
     fun updateBatteryStatus() {
@@ -333,24 +368,35 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             // Firebase에 입장 등록
             chatRepository.joinChat(state.userId, state.nickname)
 
-            // 입장 알림 시스템 메시지 전송
+            // 입장 알림 시스템 메시지 전송 (다른 사용자들에게 표시)
             val rank = EliteRank.fromDuration(previousDuration)
             chatRepository.sendSystemMessage("${state.nickname}(${rank.koreanName})님이 전우회에 복귀했습니다")
 
             // 세션 시작 (조정된 시간으로)
             preferences.startSession()
 
+            // 재입대 환영 메시지 (본인에게만 표시되는 로컬 메시지)
+            val welcomeMessage = ChatMessage(
+                id = "local_welcome_${System.currentTimeMillis()}",
+                userId = "system",
+                nickname = "시스템",
+                message = "재입대 완료. 새로운 시작입니다. 이번에는 끝까지 생존하십시오.",
+                timestamp = System.currentTimeMillis(),
+                isSystemMessage = true
+            )
+
             _uiState.update {
                 it.copy(
                     currentScreen = AppScreen.CHAT,
                     isInChat = true,
                     sessionStartTime = adjustedStartTime,
-                    sessionDuration = previousDuration
+                    sessionDuration = previousDuration,
+                    messages = listOf(welcomeMessage)  // 재입대 환영 메시지로 시작
                 )
             }
 
-            // 메시지 관찰 시작
-            startMessageObservation()
+            // 메시지 관찰 시작 (로컬 메시지 유지)
+            startMessageObservation(preserveLocalMessages = true)
 
             // 온라인 사용자 관찰 시작
             startOnlineUsersObservation()
@@ -384,14 +430,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun startMessageObservation() {
+    private fun startMessageObservation(preserveLocalMessages: Boolean = false) {
         viewModelScope.launch {
-            chatRepository.getMessages().collect { messages ->
-                _uiState.update { it.copy(messages = messages) }
+            chatRepository.getMessages().collect { firebaseMessages ->
+                _uiState.update { currentState ->
+                    val finalMessages = if (preserveLocalMessages) {
+                        // 로컬 메시지 (id가 "local_"로 시작) 유지하고 Firebase 메시지와 병합
+                        val localMessages = currentState.messages.filter { it.id.startsWith("local_") }
+                        (localMessages + firebaseMessages).sortedBy { it.timestamp }
+                    } else {
+                        firebaseMessages
+                    }
+                    currentState.copy(messages = finalMessages)
+                }
 
                 // 다른 사람의 메시지를 읽음 처리
                 val userId = _uiState.value.userId
-                val unreadMessageIds = messages
+                val unreadMessageIds = firebaseMessages
                     .filter { it.userId != userId && !it.readBy.contains(userId) && !it.isSystemMessage }
                     .map { it.id }
 
@@ -763,10 +818,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
 
-            // 관리자가 아닌 경우만 세션 복구용으로 저장
-            if (!wasAdminMode && state.sessionDuration >= ElitePreferences.MIN_RESTORE_DURATION_MS) {
-                preferences.saveSessionForRestore(state.sessionDuration)
-            }
+            // 자발적 퇴장 시에는 세션 복구용으로 저장하지 않음 (배터리 소진으로 추방당한 경우만 저장)
 
             // 관리자가 아닌 경우만 퇴장 알림 시스템 메시지 전송
             if (!wasAdminMode) {
@@ -811,6 +863,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     sessionStartTime = 0L,
                     sessionDuration = 0L,
                     comboState = ComboState(),  // 콤보 리셋
+                    supplyUsed = false,  // 긴급 보급 리셋
                     isAdminMode = false,  // 관리자 모드 비활성화
                     nickname = restoredNickname,  // 닉네임 복원
                     onlineUsersLoaded = false  // 유저 목록 로딩 상태 리셋
@@ -924,7 +977,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun emitChatEvent(event: ChatEvent) {
         _uiState.update { it.copy(latestChatEvent = event) }
-        // 3초 후 자동 dismiss
+
+        // UserRankUp은 모달에서 자체 타이머로 관리하므로 자동 dismiss 안 함
+        if (event is ChatEvent.UserRankUp) {
+            return
+        }
+
+        // 다른 이벤트는 3초 후 자동 dismiss
         viewModelScope.launch {
             delay(3000)
             if (_uiState.value.latestChatEvent == event) {

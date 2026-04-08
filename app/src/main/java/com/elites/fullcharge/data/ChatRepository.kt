@@ -258,8 +258,8 @@ class ChatRepository {
                         val nickname = child.child("nickname").getValue(String::class.java) ?: ""
                         val sessionStartTime = child.child("sessionStartTime").getValue(Long::class.java) ?: 0L
                         val lastActiveTime = child.child("lastActiveTime").getValue(Long::class.java) ?: 0L
-                        val isOnline = child.child("isOnline").value == true
-                        val isAdmin = child.child("isAdmin").value == true
+                        val isOnline = child.child("isOnline").getValue(Boolean::class.java) ?: false
+                        val isAdmin = child.child("isAdmin").getValue(Boolean::class.java) ?: false
                         EliteUser(userId, nickname, sessionStartTime, lastActiveTime, isOnline, isAdmin)
                     } catch (e: Exception) {
                         null
@@ -369,8 +369,11 @@ class ChatRepository {
     }
 
     suspend fun updateUserActivity(userId: String) {
-        usersRef.child(userId).child("lastActiveTime")
-            .setValue(System.currentTimeMillis()).await()
+        val updates = mapOf(
+            "lastActiveTime" to System.currentTimeMillis(),
+            "isOnline" to true  // 활동 중이면 항상 온라인 상태 보장
+        )
+        usersRef.child(userId).updateChildren(updates).await()
     }
 
     suspend fun updateUserNickname(userId: String, nickname: String) {

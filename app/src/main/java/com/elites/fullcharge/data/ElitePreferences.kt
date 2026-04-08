@@ -39,8 +39,8 @@ class ElitePreferences(private val context: Context) {
     companion object {
         // 세션 복구 유효 기간 (24시간)
         private const val SESSION_RESTORE_VALIDITY_MS = 24 * 60 * 60 * 1000L
-        // 복구 가능 최소 계급 기준 (30분 = 하사)
-        const val MIN_RESTORE_DURATION_MS = 30 * 60 * 1000L
+        // 복구 가능 최소 계급 기준 (1분 = 이등병)
+        const val MIN_RESTORE_DURATION_MS = 1 * 60 * 1000L
     }
 
     val userId: Flow<String> = context.dataStore.data.map { prefs ->
@@ -136,14 +136,14 @@ class ElitePreferences(private val context: Context) {
     }
 
     /**
-     * 복구 가능한 이전 세션 정보 (24시간 내, 하사 이상일 때만)
+     * 복구 가능한 이전 세션 정보 (24시간 내, 이등병 이상일 때만)
      */
     val restorableSessionDuration: Flow<Long?> = context.dataStore.data.map { prefs ->
         val duration = prefs[Keys.LAST_SESSION_DURATION] ?: 0L
         val timestamp = prefs[Keys.LAST_SESSION_TIMESTAMP] ?: 0L
         val now = System.currentTimeMillis()
 
-        // 24시간 이내이고, 하사(30분) 이상인 경우에만 복구 가능
+        // 24시간 이내이고, 이등병(1분) 이상인 경우에만 복구 가능
         if (duration >= MIN_RESTORE_DURATION_MS && (now - timestamp) < SESSION_RESTORE_VALIDITY_MS) {
             duration
         } else {

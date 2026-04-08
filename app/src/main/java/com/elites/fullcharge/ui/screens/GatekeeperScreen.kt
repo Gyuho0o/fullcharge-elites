@@ -8,16 +8,10 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -30,16 +24,26 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.elites.fullcharge.data.BatteryState
 import com.elites.fullcharge.data.EliteRank
-import com.elites.fullcharge.ui.components.BackgroundLightning
-import com.elites.fullcharge.ui.components.ChargingProgressBar
+import com.elites.fullcharge.ui.components.AppLogo
+import com.elites.fullcharge.ui.components.AppLogoFooter
+import com.elites.fullcharge.ui.components.ChargingParticles
+import com.elites.fullcharge.ui.components.RankInsignia
+import com.elites.fullcharge.ui.components.SecurityBadge
 import com.elites.fullcharge.ui.theme.*
 import kotlin.math.sin
 import kotlin.random.Random
+
+// ============================================================
+// GatekeeperScreen - v0 Tactical Military Redesign
+// ============================================================
 
 @Composable
 fun GatekeeperScreen(
@@ -49,7 +53,6 @@ fun GatekeeperScreen(
     restorableSessionDuration: Long? = null,
     onRestoreWithAd: (Long) -> Unit = {},
     onDismissRestore: () -> Unit = {},
-    // 관리자 모드
     isAdminMode: Boolean = false,
     showAdminLoginDialog: Boolean = false,
     onAdminTapDetected: () -> Unit = {},
@@ -57,7 +60,6 @@ fun GatekeeperScreen(
     onDismissAdminDialog: () -> Unit = {},
     onEnterAsAdmin: () -> Unit = {},
     onAdminLogout: () -> Unit = {},
-    // 온보딩 다시보기
     onShowOnboarding: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -65,11 +67,8 @@ fun GatekeeperScreen(
     val isCharging = batteryState.isCharging
     val batteryLevel = batteryState.level
 
-    // 비밀 탭 카운트
     var secretTapCount by remember { mutableIntStateOf(0) }
     var lastTapTime by remember { mutableLongStateOf(0L) }
-
-    // 계급 복구 다이얼로그
     var showRestoreDialog by remember { mutableStateOf(false) }
 
     if (showAdminLoginDialog) {
@@ -104,18 +103,14 @@ fun GatekeeperScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(BackgroundWhite)
+            .background(BackgroundBlack)
     ) {
-        // 배경 파티클 효과
-        if (batteryLevel == 100 || isCharging) {
-            FloatingParticles(
-                particleCount = if (isElite) 50 else 25,
-                speedMultiplier = if (isElite) 1.2f else 0.8f
-            )
-        }
+        // 배경 그리드 패턴
+        TacticalGridBackground()
 
-        if (isElite) {
-            BackgroundLightning(enabled = true)
+        // 배경 파티클 효과 (충전 중일 때만)
+        if (isCharging) {
+            ChargingParticles()
         }
 
         Column(
@@ -123,13 +118,9 @@ fun GatekeeperScreen(
                 .fillMaxSize()
                 .windowInsetsPadding(WindowInsets.statusBars)
                 .windowInsetsPadding(WindowInsets.navigationBars)
-                .padding(horizontal = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // 상단 헤더 영역
-            HeaderSection(
+            // ===== HEADER =====
+            GatekeeperHeader(
                 isAdminMode = isAdminMode,
                 onSecretTap = {
                     val currentTime = System.currentTimeMillis()
@@ -146,19 +137,42 @@ fun GatekeeperScreen(
                 }
             )
 
-            Spacer(modifier = Modifier.weight(1f))
+            // ===== MAIN CONTENT =====
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                // Security Badge (잠금/해제)
+                SecurityBadge(
+                    isUnlocked = isElite,
+                    size = 128.dp,
+                    animated = true
+                )
 
-            // 중앙 배터리 인디케이터
-            ImprovedBatteryIndicator(
-                batteryLevel = batteryLevel,
-                isCharging = isCharging,
-                isElite = isElite
-            )
+                Spacer(modifier = Modifier.height(32.dp))
 
-            Spacer(modifier = Modifier.weight(1f))
+                // Battery Icon
+                TacticalBatteryIcon(
+                    level = batteryLevel,
+                    isCharging = isCharging,
+                    isElite = isElite
+                )
 
-            // 하단 CTA 영역
-            BottomActionSection(
+                Spacer(modifier = Modifier.height(32.dp))
+
+                // Status Text
+                StatusTextSection(
+                    isElite = isElite,
+                    isAdminMode = isAdminMode
+                )
+            }
+
+            // ===== ACTION SECTION =====
+            ActionSection(
                 isAdminMode = isAdminMode,
                 isElite = isElite,
                 isCharging = isCharging,
@@ -169,209 +183,281 @@ fun GatekeeperScreen(
                 onShowOnboarding = onShowOnboarding
             )
 
-            Spacer(modifier = Modifier.height(32.dp))
+            // ===== WARNING NOTICE =====
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "경고: 99% 이하로 떨어지면 10초 내 추방됩니다",
+                    style = MonoTypography.hudSmall,
+                    color = ForegroundMuted.copy(alpha = 0.6f)
+                )
+            }
+
+            // ===== FOOTER =====
+            GatekeeperFooter(isActive = isElite)
         }
     }
 }
 
+// ===== HEADER =====
 @Composable
-private fun HeaderSection(
+private fun GatekeeperHeader(
     isAdminMode: Boolean,
     onSecretTap: () -> Unit
 ) {
     Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
-            .clickable(
-                indication = null,
-                interactionSource = remember { MutableInteractionSource() }
-            ) { onSecretTap() }
+        modifier = Modifier.fillMaxWidth()
     ) {
-        // 타이틀
-        Text(
-            text = "완충 전우회",
-            fontSize = 32.sp,
-            fontWeight = FontWeight.Bold,
-            color = if (isAdminMode) StatusRed else TossBlue
-        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() }
+                ) { onSecretTap() }
+                .padding(16.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                // Shield 아이콘 (v0와 동일)
+                Text(
+                    text = "🛡️",
+                    fontSize = 16.sp,
+                    color = if (isAdminMode) CrisisRed else EliteGreen
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = if (isAdminMode) "관리자 모드 | ADMIN" else "검문소 | CHECKPOINT",
+                    style = MonoTypography.tracking,
+                    color = if (isAdminMode) CrisisRed else ForegroundMuted
+                )
+            }
+        }
 
-        Spacer(modifier = Modifier.height(6.dp))
-
-        // 서브타이틀
-        Text(
-            text = if (isAdminMode) "관리자 모드" else "100% 완충된 자만이 입장 가능",
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Medium,
-            color = if (isAdminMode) StatusRed else TextSecondary
+        // 하단 구분선
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(BorderMuted.copy(alpha = 0.5f))
         )
     }
 }
 
+// ===== TACTICAL BATTERY ICON =====
+// v0: BatteryIcon size="xl" = 240x96 with 스캔라인, 글로우
 @Composable
-private fun ImprovedBatteryIndicator(
-    batteryLevel: Int,
+private fun TacticalBatteryIcon(
+    level: Int,
     isCharging: Boolean,
     isElite: Boolean
 ) {
-    val animatedLevel by animateFloatAsState(
-        targetValue = batteryLevel / 100f,
-        animationSpec = tween(1000, easing = FastOutSlowInEasing),
-        label = "batteryLevel"
-    )
+    val color = if (isElite) EliteGreen else CrisisRed
 
-    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
-
-    // 펄스 효과 (줄임)
-    val pulseScale by infiniteTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = if (isElite) 1.02f else 1.01f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(
-                durationMillis = if (isElite) 800 else 1500,
-                easing = FastOutSlowInEasing
-            ),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "pulseScale"
-    )
-
+    // 글로우 애니메이션
+    val infiniteTransition = rememberInfiniteTransition(label = "battery_glow")
     val glowAlpha by infiniteTransition.animateFloat(
         initialValue = 0.3f,
-        targetValue = 0.7f,
+        targetValue = 0.6f,
         animationSpec = infiniteRepeatable(
-            animation = tween(
-                durationMillis = if (isElite) 450 else 1500,
-                easing = FastOutSlowInEasing
-            ),
+            animation = tween(1500, easing = EaseInOutCubic),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "glowAlpha"
-    )
-
-    val batteryColor by animateColorAsState(
-        targetValue = when {
-            isElite -> TossBlue
-            batteryLevel >= 80 -> TossBlueDark
-            batteryLevel >= 50 -> StatusGreen
-            batteryLevel >= 20 -> StatusYellow
-            else -> StatusRed
-        },
-        animationSpec = tween(500),
-        label = "batteryColor"
+        label = "glow_alpha"
     )
 
     Box(
-        contentAlignment = Alignment.Center,
-        modifier = Modifier.scale(pulseScale)
+        contentAlignment = Alignment.Center
     ) {
-        // 메인 원형 인디케이터
-        Canvas(modifier = Modifier.size(260.dp)) {
-            val strokeWidth = 16f
-            val radius = (size.minDimension - strokeWidth) / 2
-            val center = Offset(size.width / 2, size.height / 2)
-
-            // 배경 원
-            drawCircle(
-                color = DividerGray,
-                radius = radius,
-                center = center,
-                style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-            )
-
-            // 충전 중일 때 펄스 링
-            if (isCharging && !isElite) {
-                drawCircle(
-                    color = batteryColor.copy(alpha = glowAlpha * 0.3f),
-                    radius = radius + 12f,
-                    center = center,
-                    style = Stroke(width = 3f)
-                )
-            }
-
-            // 100%일 때 외부 글로우 효과
-            if (isElite) {
-                // 외부 글로우 링 1 (가장 바깥, 연한)
-                drawCircle(
-                    color = TossBlue.copy(alpha = glowAlpha * 0.15f),
-                    radius = radius + 24f,
-                    center = center,
-                    style = Stroke(width = 8f)
-                )
-                // 외부 글로우 링 2 (중간)
-                drawCircle(
-                    color = TossBlue.copy(alpha = glowAlpha * 0.25f),
-                    radius = radius + 14f,
-                    center = center,
-                    style = Stroke(width = 4f)
-                )
-            }
-
-            // 배터리 레벨 원호
-            if (isElite) {
-                drawArc(
-                    brush = Brush.sweepGradient(
-                        colors = listOf(
-                            TossBlueDark,
-                            TossBlue,
-                            TossBlueLight,
-                            TossBlue,
-                            TossBlueDark
-                        ),
-                        center = center
-                    ),
-                    startAngle = -90f,
-                    sweepAngle = 360f,
-                    useCenter = false,
-                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
-                    topLeft = Offset(strokeWidth / 2, strokeWidth / 2),
-                    size = androidx.compose.ui.geometry.Size(
-                        size.width - strokeWidth,
-                        size.height - strokeWidth
-                    )
-                )
-            } else {
-                drawArc(
-                    color = batteryColor,
-                    startAngle = -90f,
-                    sweepAngle = 360f * animatedLevel,
-                    useCenter = false,
-                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
-                    topLeft = Offset(strokeWidth / 2, strokeWidth / 2),
-                    size = androidx.compose.ui.geometry.Size(
-                        size.width - strokeWidth,
-                        size.height - strokeWidth
-                    )
-                )
-            }
-        }
-
-        // 중앙 텍스트
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally
+        // 배터리 본체 - v0와 동일한 비율 (더 넓고 납작하게)
+        Box(
+            modifier = Modifier
+                .width(240.dp)
+                .height(72.dp)
         ) {
-            Text(
-                text = "$batteryLevel%",
-                fontSize = 52.sp,
-                fontWeight = FontWeight.Bold,
-                color = if (isElite) TossBlue else TextPrimary
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = when {
-                    isElite -> "입장 가능"
-                    isCharging -> "충전 중"
-                    else -> "충전 필요"
-                },
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Medium,
-                color = if (isElite) TossBlue else TextSecondary
+            // 글로우 효과 (외부)
+            if (isElite) {
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .offset(x = 0.dp, y = 0.dp)
+                ) {
+                    drawRoundRect(
+                        color = color.copy(alpha = glowAlpha * 0.4f),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(12.dp.toPx()),
+                        size = size
+                    )
+                }
+            }
+
+            // 배터리 테두리
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .border(
+                        width = 3.dp,
+                        color = color,
+                        shape = RoundedCornerShape(8.dp)
+                    )
+            ) {
+                // 배터리 충전량
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth(level / 100f)
+                        .padding(5.dp)
+                        .background(
+                            color = color,
+                            shape = RoundedCornerShape(4.dp)
+                        )
+                )
+
+                // 스캔라인 오버레이 (v0와 동일)
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val lineSpacing = 4.dp.toPx()
+                    var y = lineSpacing
+                    while (y < size.height) {
+                        drawLine(
+                            color = Color.Black.copy(alpha = 0.25f),
+                            start = Offset(0f, y),
+                            end = Offset(size.width, y),
+                            strokeWidth = 2f
+                        )
+                        y += lineSpacing
+                    }
+                }
+
+                // 퍼센트 텍스트
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "$level%",
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        color = if (level > 50) BackgroundBlack else ForegroundWhite
+                    )
+                }
+            }
+
+            // 배터리 팁 (오른쪽)
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .offset(x = 6.dp)
+                    .width(10.dp)
+                    .height(28.dp)
+                    .background(color, RoundedCornerShape(topEnd = 4.dp, bottomEnd = 4.dp))
             )
         }
     }
 }
 
+// ===== STATUS TEXT SECTION =====
 @Composable
-private fun BottomActionSection(
+private fun StatusTextSection(
+    isElite: Boolean,
+    isAdminMode: Boolean
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.padding(horizontal = 16.dp)
+    ) {
+        if (isAdminMode) {
+            Text(
+                text = "관리자 접근",
+                style = MaterialTheme.typography.headlineMedium,
+                color = CrisisRed,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = "ADMIN ACCESS: GRANTED",
+                style = MonoTypography.subtitle,
+                color = CrisisRed.copy(alpha = 0.7f)
+            )
+        } else if (isElite) {
+            Text(
+                text = "입장 허가",
+                style = MaterialTheme.typography.headlineMedium,
+                color = EliteGreen,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            // v0와 동일하게 한 줄로 표시 (AnnotatedString 사용)
+            Text(
+                text = buildAnnotatedString {
+                    withStyle(style = SpanStyle(color = ForegroundMuted)) {
+                        append("귀하는 ")
+                    }
+                    withStyle(style = SpanStyle(color = EliteGreen, fontWeight = FontWeight.Bold)) {
+                        append("완충 전우회")
+                    }
+                    withStyle(style = SpanStyle(color = ForegroundMuted)) {
+                        append("의 자격을 갖추었습니다.")
+                    }
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = "SECURITY CLEARANCE: GRANTED",
+                style = MonoTypography.subtitle,
+                color = EliteGreen.copy(alpha = 0.7f)
+            )
+        } else {
+            Text(
+                text = "입장 거부",
+                style = MaterialTheme.typography.headlineMedium,
+                color = CrisisRed,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            // v0와 동일하게 한 줄로 표시
+            Text(
+                text = buildAnnotatedString {
+                    withStyle(style = SpanStyle(color = ForegroundMuted)) {
+                        append("배터리 충전 상태가 ")
+                    }
+                    withStyle(style = SpanStyle(color = CrisisRed, fontWeight = FontWeight.Bold)) {
+                        append("불량")
+                    }
+                    withStyle(style = SpanStyle(color = ForegroundMuted)) {
+                        append("합니다.")
+                    }
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "100% 완충 후 재투입하십시오.",
+                style = MaterialTheme.typography.bodySmall,
+                color = ForegroundMuted
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = "SECURITY CLEARANCE: DENIED",
+                style = MonoTypography.subtitle,
+                color = CrisisRed.copy(alpha = 0.7f)
+            )
+        }
+    }
+}
+
+// ===== ACTION SECTION =====
+@Composable
+private fun ActionSection(
     isAdminMode: Boolean,
     isElite: Boolean,
     isCharging: Boolean,
@@ -381,353 +467,212 @@ private fun BottomActionSection(
     onEnterAsAdmin: () -> Unit,
     onShowOnboarding: () -> Unit
 ) {
+    // v0: max-w-xs = 320px, 중앙 정렬
     Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        when {
-            isAdminMode -> AdminEntryContent(
-                onlineUserCount = onlineUserCount,
-                onEnterAsAdmin = onEnterAsAdmin
-            )
-            isElite -> EliteWelcomeContent(
-                onlineUserCount = onlineUserCount,
-                onEnterPortal = onEnterPortal
-            )
-            else -> UnworthyContent(
-                batteryLevel = batteryLevel,
-                isCharging = isCharging,
-                onlineUserCount = onlineUserCount
-            )
+        // v0에는 온라인 유저 수가 없음 - 제거
+
+        // 메인 버튼
+        Box(
+            modifier = Modifier.widthIn(max = 320.dp)
+        ) {
+            when {
+                isAdminMode -> AdminButton(onEnterAsAdmin)
+                isElite -> EliteEnterButton(onEnterPortal)
+                else -> DisabledButton(isCharging, batteryLevel)
+            }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
-        // 이용 방법 보기 링크
-        TextButton(
+        // 온보딩 버튼
+        OutlinedButton(
             onClick = onShowOnboarding,
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
-        ) {
-            Text(
-                text = "이용 방법 보기",
-                fontSize = 13.sp,
-                color = TextTertiary
-            )
-        }
-    }
-}
-
-@Composable
-private fun EliteWelcomeContent(
-    onlineUserCount: Int,
-    onEnterPortal: () -> Unit
-) {
-    val infiniteTransition = rememberInfiniteTransition(label = "buttonPulse")
-    val scale by infiniteTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = 1.02f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1000, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "scale"
-    )
-
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        // 접속자 수 안내
-        AnimatedContent(
-            targetState = onlineUserCount,
-            transitionSpec = {
-                fadeIn(animationSpec = tween(300)) togetherWith
-                        fadeOut(animationSpec = tween(300))
-            },
-            label = "userCount"
-        ) { count ->
-            Text(
-                text = "현재 ${count}명의 전우회원이 대화 중",
-                fontSize = 14.sp,
-                color = TextSecondary,
-                textAlign = TextAlign.Center
-            )
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // 경고 카드
-        Surface(
-            shape = RoundedCornerShape(12.dp),
-            color = StatusRed.copy(alpha = 0.08f),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text(
-                text = "99%가 되면 10초 카운트다운 시작! 배신은 죄악!",
-                fontSize = 13.sp,
-                color = StatusRed,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
-            )
-        }
-
-        Spacer(modifier = Modifier.height(20.dp))
-
-        // 입장 버튼
-        Button(
-            onClick = onEnterPortal,
-            modifier = Modifier
-                .scale(scale)
-                .height(56.dp)
-                .fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = TossBlue),
-            shape = RoundedCornerShape(16.dp),
-            elevation = ButtonDefaults.buttonElevation(
-                defaultElevation = 4.dp,
-                pressedElevation = 8.dp
-            )
-        ) {
-            Text(
-                text = "입장하기",
-                fontSize = 17.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Color.White
-            )
-        }
-    }
-}
-
-@Composable
-private fun UnworthyContent(
-    batteryLevel: Int,
-    isCharging: Boolean,
-    onlineUserCount: Int
-) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        // 접속자 수 안내
-        AnimatedContent(
-            targetState = onlineUserCount,
-            transitionSpec = {
-                fadeIn(animationSpec = tween(300)) togetherWith
-                        fadeOut(animationSpec = tween(300))
-            },
-            label = "userCount"
-        ) { count ->
-            Text(
-                text = "현재 ${count}명의 전우회원이 대화 중",
-                fontSize = 14.sp,
-                color = TextSecondary,
-                textAlign = TextAlign.Center
-            )
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        if (isCharging) {
-            // 충전 중 상태
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = TossBlue.copy(alpha = 0.08f),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.padding(16.dp)
-                ) {
-                    ChargingProgressBar(
-                        batteryLevel = batteryLevel,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    val remaining = 100 - batteryLevel
-                    val encouragement = when {
-                        batteryLevel >= 95 -> "거의 다 됐어요!"
-                        batteryLevel >= 80 -> "조금만 더!"
-                        batteryLevel >= 50 -> "절반 넘었어요"
-                        else -> "충전 중..."
-                    }
-                    Text(
-                        text = "${remaining}% 남음 · $encouragement",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = TossBlue
-                    )
-                }
-            }
-        } else {
-            // 충전 안 함 상태
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = BackgroundGray,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = "100% 완충 시 입장할 수 있어요",
-                    fontSize = 14.sp,
-                    color = TextSecondary,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(20.dp))
-
-        // 비활성화된 버튼
-        Button(
-            onClick = { },
-            enabled = false,
-            modifier = Modifier
-                .height(56.dp)
-                .fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(
-                disabledContainerColor = DividerGray,
-                disabledContentColor = TextTertiary
+            modifier = Modifier.widthIn(max = 320.dp).fillMaxWidth(),
+            colors = ButtonDefaults.outlinedButtonColors(
+                contentColor = ForegroundMuted
             ),
-            shape = RoundedCornerShape(16.dp)
+            border = androidx.compose.foundation.BorderStroke(1.dp, BorderMuted.copy(alpha = 0.5f)),
+            shape = RoundedCornerShape(8.dp)
         ) {
             Text(
-                text = if (isCharging) "충전 완료 대기 중" else "충전이 필요해요",
-                fontSize = 17.sp,
-                fontWeight = FontWeight.Medium
+                text = "신병 교육 안내",
+                style = MaterialTheme.typography.bodyMedium
             )
         }
     }
 }
 
+// ===== BUTTONS =====
+// v0: 버튼 높이 lg, max-w-xs (320dp), 그림자 효과
 @Composable
-private fun AdminEntryContent(
-    onlineUserCount: Int,
-    onEnterAsAdmin: () -> Unit
-) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        // 접속자 수 안내
-        Text(
-            text = "현재 ${onlineUserCount}명의 전우회원이 접속 중",
-            fontSize = 14.sp,
-            color = TextSecondary,
-            textAlign = TextAlign.Center
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Surface(
-            shape = RoundedCornerShape(12.dp),
-            color = StatusRed.copy(alpha = 0.08f),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text(
-                text = "배터리 상태와 관계없이 입장 가능",
-                fontSize = 13.sp,
-                color = StatusRed,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
-            )
-        }
-
-        Spacer(modifier = Modifier.height(20.dp))
-
-        Button(
-            onClick = onEnterAsAdmin,
-            modifier = Modifier
-                .height(56.dp)
-                .fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = StatusRed),
-            shape = RoundedCornerShape(16.dp)
-        ) {
-            Text(
-                text = "관리자로 입장",
-                fontSize = 17.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Color.White
-            )
-        }
-    }
-}
-
-@Composable
-private fun FloatingParticles(
-    particleCount: Int = 40,
-    speedMultiplier: Float = 1f
-) {
-    data class Particle(
-        val id: Int,
-        var x: Float,
-        var y: Float,
-        val size: Float,
-        val speed: Float,
-        val alpha: Float,
-        val wobbleOffset: Float,
-        val wobbleSpeed: Float
-    )
-
-    var particles by remember(particleCount) {
-        mutableStateOf(
-            List(particleCount) { index ->
-                Particle(
-                    id = index,
-                    x = Random.nextFloat(),
-                    y = Random.nextFloat(),
-                    size = Random.nextFloat() * 5f + 2f,
-                    speed = (Random.nextFloat() * 0.0015f + 0.0008f) * speedMultiplier,
-                    alpha = Random.nextFloat() * 0.35f + 0.1f,
-                    wobbleOffset = Random.nextFloat() * 100f,
-                    wobbleSpeed = Random.nextFloat() * 0.04f + 0.02f
-                )
-            }
-        )
-    }
-
-    val infiniteTransition = rememberInfiniteTransition(label = "particles")
-    val time by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 100f,
+private fun EliteEnterButton(onClick: () -> Unit) {
+    // Shimmer 애니메이션
+    val infiniteTransition = rememberInfiniteTransition(label = "shimmer")
+    val shimmerOffset by infiniteTransition.animateFloat(
+        initialValue = -1f,
+        targetValue = 2f,
         animationSpec = infiniteRepeatable(
-            animation = tween(12000, easing = LinearEasing),
+            animation = tween(2000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
-        label = "time"
+        label = "shimmer_offset"
     )
 
-    LaunchedEffect(time) {
-        particles = particles.map { p ->
-            val newY = p.y - p.speed
-            val wobble = sin((time + p.wobbleOffset) * p.wobbleSpeed) * 0.0015f
-            val newX = p.x + wobble
-
-            if (newY < -0.05f) {
-                p.copy(
-                    x = Random.nextFloat(),
-                    y = 1.05f,
-                    alpha = Random.nextFloat() * 0.35f + 0.1f
+    Button(
+        onClick = onClick,
+        modifier = Modifier
+            .widthIn(max = 320.dp)
+            .fillMaxWidth()
+            .height(52.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = EliteGreen
+        ),
+        shape = RoundedCornerShape(8.dp),
+        elevation = ButtonDefaults.buttonElevation(
+            defaultElevation = 0.dp,
+            pressedElevation = 0.dp
+        )
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            // Shimmer 오버레이
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val shimmerWidth = size.width * 0.3f
+                val start = shimmerOffset * size.width - shimmerWidth
+                drawRect(
+                    brush = Brush.horizontalGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            Color.White.copy(alpha = 0.3f),
+                            Color.Transparent
+                        ),
+                        startX = start,
+                        endX = start + shimmerWidth
+                    )
                 )
-            } else {
-                p.copy(x = newX.coerceIn(0f, 1f), y = newY)
             }
-        }
-    }
 
-    Canvas(modifier = Modifier.fillMaxSize()) {
-        particles.forEach { p ->
-            drawCircle(
-                color = TossBlue.copy(alpha = p.alpha * 0.3f),
-                radius = p.size * 2.5f,
-                center = Offset(p.x * size.width, p.y * size.height)
-            )
-            drawCircle(
-                color = TossBlue.copy(alpha = p.alpha),
-                radius = p.size,
-                center = Offset(p.x * size.width, p.y * size.height)
-            )
-            drawCircle(
-                color = Color.White.copy(alpha = p.alpha * 0.6f),
-                radius = p.size * 0.35f,
-                center = Offset(p.x * size.width, p.y * size.height)
+            Text(
+                text = "전선 투입",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 2.sp,
+                color = BackgroundBlack
             )
         }
     }
 }
 
+@Composable
+private fun AdminButton(onClick: () -> Unit) {
+    Button(
+        onClick = onClick,
+        modifier = Modifier
+            .widthIn(max = 320.dp)
+            .fillMaxWidth()
+            .height(52.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = CrisisRed
+        ),
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Text(
+            text = "관리자로 입장",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = ForegroundWhite
+        )
+    }
+}
+
+@Composable
+private fun DisabledButton(isCharging: Boolean, batteryLevel: Int) {
+    Button(
+        onClick = { },
+        enabled = false,
+        modifier = Modifier
+            .widthIn(max = 320.dp)
+            .fillMaxWidth()
+            .height(52.dp),
+        colors = ButtonDefaults.buttonColors(
+            disabledContainerColor = MutedBlack,
+            disabledContentColor = ForegroundMuted
+        ),
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Text(
+            text = if (isCharging) "충전 완료 대기 중... ${100 - batteryLevel}% 남음" else "충전이 필요해요",
+            style = MaterialTheme.typography.titleMedium
+        )
+    }
+}
+
+// ===== FOOTER =====
+@Composable
+private fun GatekeeperFooter(isActive: Boolean) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = Color.Transparent
+    ) {
+        Column {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(BorderMuted.copy(alpha = 0.3f))
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                AppLogoFooter(isActive = isActive)
+            }
+        }
+    }
+}
+
+// ===== BACKGROUND EFFECTS =====
+@Composable
+private fun TacticalGridBackground() {
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val gridSize = 20.dp.toPx()
+        val lineColor = EliteGreen.copy(alpha = 0.03f)
+
+        // 수직선
+        var x = 0f
+        while (x < size.width) {
+            drawLine(
+                color = lineColor,
+                start = Offset(x, 0f),
+                end = Offset(x, size.height),
+                strokeWidth = 1f
+            )
+            x += gridSize
+        }
+
+        // 수평선
+        var y = 0f
+        while (y < size.height) {
+            drawLine(
+                color = lineColor,
+                start = Offset(0f, y),
+                end = Offset(size.width, y),
+                strokeWidth = 1f
+            )
+            y += gridSize
+        }
+    }
+}
+// ===== DIALOGS =====
 @Composable
 private fun AdminLoginDialog(
     onLogin: (String) -> Boolean,
@@ -738,8 +683,8 @@ private fun AdminLoginDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = BackgroundWhite,
-        shape = RoundedCornerShape(20.dp),
+        containerColor = CardBlack,
+        shape = RoundedCornerShape(16.dp),
         title = {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -751,7 +696,7 @@ private fun AdminLoginDialog(
                     text = "관리자 로그인",
                     fontWeight = FontWeight.Bold,
                     fontSize = 18.sp,
-                    color = TextPrimary
+                    color = ForegroundWhite
                 )
             }
         },
@@ -766,23 +711,26 @@ private fun AdminLoginDialog(
                         password = it
                         showError = false
                     },
-                    label = { Text("비밀번호") },
+                    label = { Text("비밀번호", color = ForegroundMuted) },
                     singleLine = true,
                     isError = showError,
                     visualTransformation = PasswordVisualTransformation(),
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(8.dp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = TossBlue,
-                        focusedLabelColor = TossBlue,
-                        errorBorderColor = StatusRed
+                        focusedBorderColor = EliteGreen,
+                        focusedLabelColor = EliteGreen,
+                        unfocusedBorderColor = BorderMuted,
+                        errorBorderColor = CrisisRed,
+                        focusedTextColor = ForegroundWhite,
+                        unfocusedTextColor = ForegroundWhite
                     )
                 )
                 if (showError) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = "비밀번호가 틀렸습니다",
-                        color = StatusRed,
+                        color = CrisisRed,
                         fontSize = 12.sp
                     )
                 }
@@ -793,15 +741,15 @@ private fun AdminLoginDialog(
                 onClick = {
                     if (onLogin(password)) onDismiss() else showError = true
                 },
-                colors = ButtonDefaults.buttonColors(containerColor = TossBlue),
-                shape = RoundedCornerShape(12.dp)
+                colors = ButtonDefaults.buttonColors(containerColor = EliteGreen),
+                shape = RoundedCornerShape(8.dp)
             ) {
-                Text("로그인")
+                Text("로그인", color = BackgroundBlack)
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("취소", color = TextSecondary)
+                Text("취소", color = ForegroundMuted)
             }
         }
     )
@@ -816,11 +764,23 @@ private fun RankRestoreDialog(
 ) {
     val previousRank = EliteRank.fromDuration(previousDuration)
     val formattedDuration = EliteRank.fromDurationFormatted(previousDuration)
+    var showResetConfirmation by remember { mutableStateOf(false) }
+
+    if (showResetConfirmation) {
+        RankResetConfirmDialog(
+            previousRank = previousRank,
+            onConfirm = {
+                showResetConfirmation = false
+                onStartFresh()
+            },
+            onCancel = { showResetConfirmation = false }
+        )
+    }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = BackgroundWhite,
-        shape = RoundedCornerShape(20.dp),
+        onDismissRequest = {},  // 바깥 터치로 닫히지 않음 - 명시적으로 버튼 선택 필요
+        containerColor = CardBlack,
+        shape = RoundedCornerShape(16.dp),
         title = {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -832,7 +792,7 @@ private fun RankRestoreDialog(
                     text = "계급 복구",
                     fontWeight = FontWeight.Bold,
                     fontSize = 18.sp,
-                    color = TextPrimary
+                    color = ForegroundWhite
                 )
             }
         },
@@ -844,31 +804,35 @@ private fun RankRestoreDialog(
                 Text(
                     text = "이전 세션에서 달성한 계급이 있어요",
                     fontSize = 14.sp,
-                    color = TextSecondary,
+                    color = ForegroundMuted,
                     textAlign = TextAlign.Center
                 )
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Surface(
                     shape = RoundedCornerShape(12.dp),
-                    color = TossBlue.copy(alpha = 0.1f),
+                    color = EliteGreen.copy(alpha = 0.1f),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier.padding(16.dp)
                     ) {
+                        // 계급장
+                        RankInsignia(rank = previousRank, size = 40.dp)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        // 계급 이름
                         Text(
                             text = previousRank.koreanName,
                             fontSize = 22.sp,
                             fontWeight = FontWeight.Bold,
-                            color = TossBlue
+                            color = EliteGreen
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = formattedDuration,
-                            fontSize = 14.sp,
-                            color = TextSecondary
+                            style = MonoTypography.hudMedium,
+                            color = ForegroundMuted
                         )
                     }
                 }
@@ -877,7 +841,7 @@ private fun RankRestoreDialog(
                 Text(
                     text = "광고를 시청하면 이전 계급으로\n바로 시작할 수 있어요",
                     fontSize = 13.sp,
-                    color = TextTertiary,
+                    color = ForegroundDim,
                     textAlign = TextAlign.Center,
                     lineHeight = 18.sp
                 )
@@ -886,19 +850,131 @@ private fun RankRestoreDialog(
         confirmButton = {
             Button(
                 onClick = onRestoreWithAd,
-                colors = ButtonDefaults.buttonColors(containerColor = TossBlue),
-                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = EliteGreen),
+                shape = RoundedCornerShape(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(text = "광고 보고 복구", fontWeight = FontWeight.SemiBold)
+                Text(text = "광고 보고 복구", fontWeight = FontWeight.SemiBold, color = BackgroundBlack)
             }
         },
         dismissButton = {
             TextButton(
-                onClick = onStartFresh,
+                onClick = { showResetConfirmation = true },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(text = "새로 시작", color = TextSecondary)
+                Text(text = "새로 시작", color = ForegroundMuted)
+            }
+        }
+    )
+}
+
+@Composable
+private fun RankResetConfirmDialog(
+    previousRank: EliteRank,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onCancel,
+        containerColor = CardBlack,
+        shape = RoundedCornerShape(16.dp),
+        title = {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(text = "⚠️", fontSize = 40.sp)
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "정말 새로 시작할까요?",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    color = CrisisRed
+                )
+            }
+        },
+        text = {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "현재 보유한 계급",
+                    fontSize = 12.sp,
+                    color = ForegroundMuted,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // 이전 계급 → 훈련병 표시
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    // 이전 계급 (계급장 + 이름)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        RankInsignia(rank = previousRank, size = 24.dp)
+                        Text(
+                            text = previousRank.koreanName,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = EliteGreen
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = "→",
+                        fontSize = 18.sp,
+                        color = ForegroundMuted
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    // 훈련병 (계급장 + 이름)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        RankInsignia(rank = EliteRank.TRAINEE, size = 24.dp)
+                        Text(
+                            text = "훈련병",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = CrisisRed
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "새로 시작하면 계급이 훈련병으로\n초기화됩니다. 되돌릴 수 없습니다.",
+                    fontSize = 13.sp,
+                    color = ForegroundDim,
+                    textAlign = TextAlign.Center,
+                    lineHeight = 18.sp
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onCancel,
+                colors = ButtonDefaults.buttonColors(containerColor = EliteGreen),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(text = "돌아가기", fontWeight = FontWeight.SemiBold, color = BackgroundBlack)
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onConfirm,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(text = "훈련병부터 다시 시작", color = CrisisRed.copy(alpha = 0.7f))
             }
         }
     )
