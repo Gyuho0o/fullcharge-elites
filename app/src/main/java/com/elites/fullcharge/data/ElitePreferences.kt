@@ -34,6 +34,8 @@ class ElitePreferences(private val context: Context) {
         val CRISIS_ESCAPE_COUNT = intPreferencesKey("crisis_escape_count")
         val HIGHEST_RANK = stringPreferencesKey("highest_rank")
         val UNLOCKED_ACHIEVEMENTS = stringSetPreferencesKey("unlocked_achievements")
+        // 차단한 사용자 ID 목록
+        val BLOCKED_USER_IDS = stringSetPreferencesKey("blocked_user_ids")
     }
 
     companion object {
@@ -246,6 +248,39 @@ class ElitePreferences(private val context: Context) {
      */
     suspend fun hasAchievement(achievement: Achievement): Boolean {
         return unlockedAchievements.first().contains(achievement.id)
+    }
+
+    // ========== 차단 사용자 관련 ==========
+
+    val blockedUserIds: Flow<Set<String>> = context.dataStore.data.map { prefs ->
+        prefs[Keys.BLOCKED_USER_IDS] ?: emptySet()
+    }
+
+    /**
+     * 사용자 차단 (신고)
+     */
+    suspend fun blockUser(userId: String) {
+        context.dataStore.edit { prefs ->
+            val current = prefs[Keys.BLOCKED_USER_IDS] ?: emptySet()
+            prefs[Keys.BLOCKED_USER_IDS] = current + userId
+        }
+    }
+
+    /**
+     * 사용자 차단 해제
+     */
+    suspend fun unblockUser(userId: String) {
+        context.dataStore.edit { prefs ->
+            val current = prefs[Keys.BLOCKED_USER_IDS] ?: emptySet()
+            prefs[Keys.BLOCKED_USER_IDS] = current - userId
+        }
+    }
+
+    /**
+     * 차단 목록 가져오기 (동기)
+     */
+    suspend fun getBlockedUserIds(): Set<String> {
+        return blockedUserIds.first()
     }
 
     private fun generateRandomNickname(): String {

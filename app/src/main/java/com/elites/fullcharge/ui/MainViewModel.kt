@@ -72,7 +72,9 @@ data class MainUiState(
     // 실시간 합류/퇴장 카운트 (플로팅 UI용)
     val recentJoinCount: Int = 0,
     val recentLeaveCount: Int = 0,
-    val showJoinLeaveIndicator: Boolean = false
+    val showJoinLeaveIndicator: Boolean = false,
+    // 차단한 사용자 ID 목록 (신고한 사용자)
+    val blockedUserIds: Set<String> = emptySet()
 ) {
     companion object {
         const val DANGER_COUNTDOWN_SECONDS = 10  // 10초 카운트다운
@@ -131,6 +133,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             preferences.restorableSessionDuration.collect { duration ->
                 _uiState.update { it.copy(restorableSessionDuration = duration) }
+            }
+        }
+
+        // 차단 목록 관찰
+        viewModelScope.launch {
+            preferences.blockedUserIds.collect { blockedIds ->
+                _uiState.update { it.copy(blockedUserIds = blockedIds) }
             }
         }
 
@@ -781,6 +790,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             val success = chatRepository.reportMessage(report)
             onResult(success)
+        }
+    }
+
+    /**
+     * 사용자 차단 (신고 시 메시지 블라인드 처리)
+     */
+    fun blockUser(userId: String) {
+        viewModelScope.launch {
+            preferences.blockUser(userId)
+        }
+    }
+
+    /**
+     * 사용자 차단 해제
+     */
+    fun unblockUser(userId: String) {
+        viewModelScope.launch {
+            preferences.unblockUser(userId)
         }
     }
 

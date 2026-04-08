@@ -213,6 +213,10 @@ class MainActivity : ComponentActivity() {
                         onHandleReport = { reportId, messageId, deleteMsg -> viewModel.handleReport(reportId, messageId, deleteMsg) },
                         onDismissReport = { reportId -> viewModel.dismissReport(reportId) },
                         onShowOnboarding = { viewModel.showOnboarding() },
+                        // 사용자 차단 (신고)
+                        blockedUserIds = uiState.blockedUserIds,
+                        onBlockUser = { userId -> viewModel.blockUser(userId) },
+                        onUnblockUser = { userId -> viewModel.unblockUser(userId) },
                         onRequestSupply = {
                             // 리워드 광고 표시 후 30초 추가
                             adManager.showRewardedAd(
@@ -263,6 +267,10 @@ class MainActivity : ComponentActivity() {
         onHandleReport: (String, String, Boolean) -> Unit,
         onDismissReport: (String) -> Unit,
         onShowOnboarding: () -> Unit,
+        // 사용자 차단 (신고)
+        blockedUserIds: Set<String>,
+        onBlockUser: (String) -> Unit,
+        onUnblockUser: (String) -> Unit,
         onRequestSupply: () -> Unit
     ) {
         AnimatedContent(
@@ -361,6 +369,10 @@ class MainActivity : ComponentActivity() {
                         reports = uiState.reports,
                         onHandleReport = onHandleReport,
                         onDismissReport = onDismissReport,
+                        // 사용자 차단 (신고)
+                        blockedUserIds = blockedUserIds,
+                        onBlockUser = onBlockUser,
+                        onUnblockUser = onUnblockUser,
                         // 실시간 합류/퇴장 카운트
                         recentJoinCount = uiState.recentJoinCount,
                         recentLeaveCount = uiState.recentLeaveCount,

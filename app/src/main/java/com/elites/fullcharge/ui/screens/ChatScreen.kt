@@ -2,9 +2,11 @@ package com.elites.fullcharge.ui.screens
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -68,6 +70,9 @@ fun ChatScreen(
     onReply: (ChatMessage) -> Unit = {},
     onClearReply: () -> Unit = {},
     onToggleReaction: (String, String) -> Unit = { _, _ -> },
+    blockedUserIds: Set<String> = emptySet(),
+    onBlockUser: (String) -> Unit = {},
+    onUnblockUser: (String) -> Unit = {},
     onCreatePoll: (String, List<String>, Int) -> Unit = { _, _, _ -> },
     onVotePoll: (String, Int) -> Unit = { _, _ -> },
     isInDanger: Boolean = false,
@@ -229,7 +234,12 @@ fun ChatScreen(
                         message.isSystemMessage -> SystemMessage(message = message)
                         else -> UserMessage(
                             message = message,
-                            isMine = message.userId == currentUserId
+                            isMine = message.userId == currentUserId,
+                            currentUserId = currentUserId,
+                            onToggleReaction = onToggleReaction,
+                            isBlocked = blockedUserIds.contains(message.userId),
+                            onBlockUser = { onBlockUser(message.userId) },
+                            onUnblockUser = { onUnblockUser(message.userId) }
                         )
                     }
                 }
@@ -1185,10 +1195,16 @@ private fun AnnouncementMessage(message: ChatMessage) {
 // - Bubble: max-w-[85%] p-3 rounded-2xl shadow-sm
 // - Mine: mr-1 ml-8 rounded-tr-sm bg-primary
 // - Others: ml-6 mr-8 rounded-tl-sm bg-card border border-primary/20
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun UserMessage(
     message: ChatMessage,
-    isMine: Boolean
+    isMine: Boolean,
+    currentUserId: String = "",
+    onToggleReaction: (String, String) -> Unit = { _, _ -> },
+    isBlocked: Boolean = false,
+    onBlockUser: () -> Unit = {},
+    onUnblockUser: () -> Unit = {}
 ) {
     val rank = try {
         EliteRank.valueOf(message.rank)
@@ -1203,12 +1219,43 @@ private fun UserMessage(
         bottomEnd = 16.dp
     )
 
+    // 리액션 피커 표시 여부
+    var showReactionPicker by remember { mutableStateOf(false) }
+
+    // 차단 해제 확인 다이얼로그 표시 여부
+    var showUnblockDialog by remember { mutableStateOf(false) }
+
+    // 커스텀 리액션 목록
+    val customReactions = listOf("악!", "확인!", "삼돠!", "슴돠?")
+
+    // 차단 해제 확인 다이얼로그
+    if (showUnblockDialog) {
+        UnblockConfirmDialog(
+            nickname = message.nickname,
+            onConfirm = {
+                onUnblockUser()
+                showUnblockDialog = false
+            },
+            onDismiss = { showUnblockDialog = false }
+        )
+    }
+
+    // 블라인드 처리된 메시지인 경우
+    if (isBlocked && !isMine) {
+        BlindedMessage(
+            nickname = message.nickname,
+            timestamp = message.timestamp,
+            onLongPress = { showUnblockDialog = true }
+        )
+        return
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(
-                start = if (isMine) 48.dp else 4.dp,   // 타인 메시지: 왼쪽 4dp (내 메시지 오른쪽과 동일)
-                end = if (isMine) 4.dp else 48.dp      // 내 메시지: 오른쪽 4dp
+                start = if (isMine) 48.dp else 4.dp,
+                end = if (isMine) 4.dp else 48.dp
             ),
         horizontalAlignment = if (isMine) Alignment.End else Alignment.Start
     ) {
@@ -1249,25 +1296,216 @@ private fun UserMessage(
             }
         }
 
-        // Message Bubble - 내용에 맞게 크기 조절, 최대 너비 제한
-        Box(
-            modifier = Modifier
-                .wrapContentWidth()
-                .widthIn(max = 260.dp)  // 약 85% of typical screen
-                .clip(bubbleShape)
-                .background(if (isMine) EliteGreen else CardBlack)
-                .then(
-                    if (!isMine) Modifier.border(1.dp, EliteGreen.copy(alpha = 0.2f), bubbleShape)
-                    else Modifier
-                )
-                .padding(12.dp)
+        // Message Bubble + Reactions Row
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = if (isMine) Arrangement.End else Arrangement.Start,
+            modifier = Modifier.fillMaxWidth()
         ) {
-            Text(
-                text = message.message,
-                fontSize = 14.sp,
-                lineHeight = 22.sp,
-                color = if (isMine) BackgroundBlack else ForegroundWhite
-            )
+            // 내 메시지: 리액션이 왼쪽에
+            if (isMine && message.reactions.isNotEmpty()) {
+                ReactionDisplay(
+                    reactions = message.reactions,
+                    currentUserId = currentUserId,
+                    onToggleReaction = { emoji -> onToggleReaction(message.id, emoji) },
+                    modifier = Modifier.padding(end = 6.dp)
+                )
+            }
+
+            // Message Bubble with long press
+            Box(
+                modifier = Modifier
+                    .wrapContentWidth()
+                    .widthIn(max = 240.dp)
+                    .clip(bubbleShape)
+                    .background(if (isMine) EliteGreen else CardBlack)
+                    .then(
+                        if (!isMine) Modifier.border(1.dp, EliteGreen.copy(alpha = 0.2f), bubbleShape)
+                        else Modifier
+                    )
+                    .combinedClickable(
+                        onClick = { },
+                        onLongClick = { showReactionPicker = true }
+                    )
+                    .padding(12.dp)
+            ) {
+                Text(
+                    text = message.message,
+                    fontSize = 14.sp,
+                    lineHeight = 22.sp,
+                    color = if (isMine) BackgroundBlack else ForegroundWhite
+                )
+            }
+
+            // 타인 메시지: 리액션이 오른쪽에
+            if (!isMine && message.reactions.isNotEmpty()) {
+                ReactionDisplay(
+                    reactions = message.reactions,
+                    currentUserId = currentUserId,
+                    onToggleReaction = { emoji -> onToggleReaction(message.id, emoji) },
+                    modifier = Modifier.padding(start = 6.dp)
+                )
+            }
+        }
+
+        // 리액션 피커 (롱프레스 시 표시)
+        // 각 리액션별 색상 정의
+        val reactionColors = mapOf(
+            "악!" to CrisisRed,
+            "확인!" to EliteGreen,
+            "삼돠!" to Color(0xFF4D94FF),  // 파랑
+            "슴돠?" to WarningAmber
+        )
+
+        AnimatedVisibility(
+            visible = showReactionPicker,
+            enter = fadeIn() + scaleIn(initialScale = 0.8f),
+            exit = fadeOut() + scaleOut(targetScale = 0.8f)
+        ) {
+            Row(
+                modifier = Modifier
+                    .padding(top = 4.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(SurfaceBlack)
+                    .border(1.dp, BorderMuted, RoundedCornerShape(20.dp))
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                customReactions.forEach { emoji ->
+                    val isSelected = message.reactions[emoji]?.contains(currentUserId) == true
+                    val emojiColor = reactionColors[emoji] ?: ForegroundWhite
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(
+                                if (isSelected) emojiColor.copy(alpha = 0.3f)
+                                else Color.Transparent
+                            )
+                            .clickable {
+                                onToggleReaction(message.id, emoji)
+                                showReactionPicker = false
+                            }
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = emoji,
+                            fontSize = 13.sp,
+                            fontFamily = FontFamily.Serif,  // 궁서체 스타일
+                            fontWeight = FontWeight.Bold,
+                            color = emojiColor
+                        )
+                    }
+                }
+
+                // 타인 메시지일 경우 신고 버튼 추가
+                if (!isMine) {
+                    // 구분선
+                    Box(
+                        modifier = Modifier
+                            .width(1.dp)
+                            .height(20.dp)
+                            .background(BorderMuted.copy(alpha = 0.5f))
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(CrisisRed.copy(alpha = 0.15f))
+                            .clickable {
+                                onBlockUser()
+                                showReactionPicker = false
+                            }
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = "🚨 신고",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = CrisisRed
+                        )
+                    }
+                }
+
+                // 닫기 버튼
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { showReactionPicker = false }
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        text = "✕",
+                        fontSize = 12.sp,
+                        color = ForegroundMuted
+                    )
+                }
+            }
+        }
+    }
+}
+
+// 리액션 표시 컴포넌트
+@Composable
+private fun ReactionDisplay(
+    reactions: Map<String, List<String>>,
+    currentUserId: String,
+    onToggleReaction: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    // 각 리액션별 색상 정의
+    val reactionColors = mapOf(
+        "악!" to CrisisRed,
+        "확인!" to EliteGreen,
+        "삼돠!" to Color(0xFF4D94FF),
+        "슴돠?" to WarningAmber
+    )
+
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        reactions.forEach { (emoji, userIds) ->
+            if (userIds.isNotEmpty()) {
+                val isSelected = userIds.contains(currentUserId)
+                val emojiColor = reactionColors[emoji] ?: ForegroundMuted
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(
+                            if (isSelected) emojiColor.copy(alpha = 0.25f)
+                            else MutedBlack
+                        )
+                        .border(
+                            width = 1.dp,
+                            color = if (isSelected) emojiColor.copy(alpha = 0.5f) else BorderMuted,
+                            shape = RoundedCornerShape(10.dp)
+                        )
+                        .clickable { onToggleReaction(emoji) }
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        Text(
+                            text = emoji,
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Serif,
+                            fontWeight = FontWeight.Bold,
+                            color = emojiColor
+                        )
+                        if (userIds.size > 1) {
+                            Text(
+                                text = "${userIds.size}",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = emojiColor
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -1811,6 +2049,165 @@ private fun NicknameEditDialog(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(text = "변경하기", fontWeight = FontWeight.SemiBold, color = BackgroundBlack)
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(text = "취소", color = ForegroundMuted)
+            }
+        }
+    )
+}
+
+// ===== BLINDED MESSAGE =====
+// 신고된 유저의 메시지를 블라인드 처리하는 UI
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun BlindedMessage(
+    nickname: String,
+    timestamp: Long,
+    onLongPress: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 4.dp, end = 48.dp),
+        horizontalAlignment = Alignment.Start
+    ) {
+        // Author Info (흐리게)
+        Row(
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = "🚫",
+                fontSize = 14.sp
+            )
+            Text(
+                text = nickname,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = ForegroundMuted.copy(alpha = 0.5f)
+            )
+            Text(
+                text = formatTime(timestamp),
+                fontSize = 12.sp,
+                fontFamily = FontFamily.Monospace,
+                color = ForegroundMuted.copy(alpha = 0.3f)
+            )
+        }
+
+        // 블라인드 메시지 박스
+        Box(
+            modifier = Modifier
+                .wrapContentWidth()
+                .widthIn(max = 240.dp)
+                .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 16.dp, bottomStart = 16.dp, bottomEnd = 16.dp))
+                .background(MutedBlack.copy(alpha = 0.6f))
+                .border(1.dp, BorderMuted.copy(alpha = 0.3f), RoundedCornerShape(topStart = 4.dp, topEnd = 16.dp, bottomStart = 16.dp, bottomEnd = 16.dp))
+                .combinedClickable(
+                    onClick = { },
+                    onLongClick = onLongPress
+                )
+                .padding(12.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = "🚫",
+                    fontSize = 14.sp
+                )
+                Column {
+                    Text(
+                        text = "신고된 사용자입니다",
+                        fontSize = 13.sp,
+                        color = ForegroundMuted.copy(alpha = 0.7f)
+                    )
+                    Text(
+                        text = "길게 눌러 차단 해제",
+                        fontSize = 11.sp,
+                        color = ForegroundMuted.copy(alpha = 0.4f)
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ===== UNBLOCK CONFIRM DIALOG =====
+// 차단 해제 확인 다이얼로그
+@Composable
+private fun UnblockConfirmDialog(
+    nickname: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = CardBlack,
+        shape = RoundedCornerShape(16.dp),
+        title = {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(text = "🔓", fontSize = 40.sp)
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "차단 해제",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    color = ForegroundWhite
+                )
+            }
+        },
+        text = {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = WarningAmber.copy(alpha = 0.1f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(16.dp)
+                    ) {
+                        Text(
+                            text = nickname,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = WarningAmber
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "이 사용자의 차단을 해제하면\n메시지가 다시 표시됩니다.",
+                    fontSize = 13.sp,
+                    color = ForegroundDim,
+                    textAlign = TextAlign.Center,
+                    lineHeight = 18.sp
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                colors = ButtonDefaults.buttonColors(containerColor = EliteGreen),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(text = "차단 해제하기", fontWeight = FontWeight.SemiBold, color = BackgroundBlack)
             }
         },
         dismissButton = {
