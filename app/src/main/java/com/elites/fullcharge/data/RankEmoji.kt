@@ -51,10 +51,6 @@ object RankEmoji {
      * 현재 계급에서 사용 가능한 이모지 목록 반환
      */
     fun getAvailableEmojis(rank: EliteRank): List<EmojiItem> {
-        // TODO: 테스트 완료 후 원래 로직으로 복원
-        return NCO_EMOJIS + COMPANY_OFFICER_EMOJIS + FIELD_OFFICER_EMOJIS
-
-        /*
         return when (rank) {
             // 병사급: 이모지 사용 불가
             EliteRank.TRAINEE,
@@ -69,7 +65,7 @@ object RankEmoji {
             EliteRank.MASTER_SERGEANT,
             EliteRank.SERGEANT_MAJOR -> NCO_EMOJIS
 
-            // 위관급: NCO + 위관 이모지
+            // 위관급: NCO + 장교 이모지
             EliteRank.SECOND_LIEUTENANT,
             EliteRank.FIRST_LIEUTENANT,
             EliteRank.CAPTAIN -> NCO_EMOJIS + COMPANY_OFFICER_EMOJIS
@@ -83,16 +79,13 @@ object RankEmoji {
             EliteRank.LIEUTENANT_GENERAL,
             EliteRank.GENERAL -> NCO_EMOJIS + COMPANY_OFFICER_EMOJIS + FIELD_OFFICER_EMOJIS
         }
-        */
     }
 
     /**
-     * 이모지 사용 가능 여부
+     * 이모지 사용 가능 여부 (하사 이상만 사용 가능)
      */
     fun canUseEmoji(rank: EliteRank): Boolean {
-        // TODO: 테스트 완료 후 원래 로직으로 복원
-        return true
-        // return rank.ordinal >= EliteRank.STAFF_SERGEANT.ordinal
+        return rank.ordinal >= EliteRank.STAFF_SERGEANT.ordinal
     }
 
     /**
