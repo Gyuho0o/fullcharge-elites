@@ -13,8 +13,8 @@ android {
         applicationId = "com.elites.fullcharge"
         minSdk = 26
         targetSdk = 35
-        versionCode = 47
-        versionName = "1.4.15"
+        versionCode = 48
+        versionName = "1.4.16"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
