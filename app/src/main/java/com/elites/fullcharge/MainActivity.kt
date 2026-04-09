@@ -30,6 +30,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import android.view.WindowManager
 import androidx.core.view.WindowCompat
 import com.elites.fullcharge.ad.AdManager
+import com.elites.fullcharge.notification.EliteMessagingService
 import com.elites.fullcharge.ui.AppScreen
 import com.elites.fullcharge.ui.MainViewModel
 import com.elites.fullcharge.ui.screens.ChatScreen
@@ -447,6 +448,9 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         viewModel.updateBatteryStatus()
         viewModel.onAppForeground()  // 포그라운드 복귀 시 모니터링 재개
+
+        // 알림 카운트 초기화 (앱이 포그라운드로 오면 읽은 것으로 처리)
+        EliteMessagingService.clearUnreadCount(this)
 
         // 업데이트 상태 재확인 (백그라운드에서 복귀 시)
         if (::inAppUpdateManager.isInitialized) {

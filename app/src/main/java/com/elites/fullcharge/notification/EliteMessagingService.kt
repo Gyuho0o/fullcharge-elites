@@ -23,8 +23,26 @@ class EliteMessagingService : FirebaseMessagingService() {
         const val CHANNEL_NAME = "채팅 알림"
         const val CHANNEL_DESCRIPTION = "새 메시지 알림 (무음)"
 
+        // 고정 알림 ID (알림이 쌓이지 않고 교체됨)
+        private const val NOTIFICATION_ID = 1001
+
         // 토큰 변경 콜백 (앱에서 설정)
         var onTokenRefresh: ((String) -> Unit)? = null
+
+        // 읽지 않은 메시지 수 (앱이 포그라운드로 오면 초기화)
+        private var unreadMessageCount = 0
+        private val recentSenders = mutableListOf<String>()
+
+        /**
+         * 앱이 포그라운드로 돌아올 때 호출하여 알림 초기화
+         */
+        fun clearUnreadCount(context: Context) {
+            unreadMessageCount = 0
+            recentSenders.clear()
+            // 기존 알림도 제거
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.cancel(NOTIFICATION_ID)
+        }
     }
 
     override fun onNewToken(token: String) {
@@ -52,6 +70,16 @@ class EliteMessagingService : FirebaseMessagingService() {
         // 알림 채널 생성 (Android 8.0+)
         createNotificationChannel(notificationManager)
 
+        // 메시지 수 증가 및 발신자 기록
+        unreadMessageCount++
+        if (senderNickname.isNotEmpty() && !recentSenders.contains(senderNickname)) {
+            recentSenders.add(senderNickname)
+            // 최대 5명까지만 기록
+            if (recentSenders.size > 5) {
+                recentSenders.removeAt(0)
+            }
+        }
+
         // 알림 클릭 시 앱 열기
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -63,21 +91,36 @@ class EliteMessagingService : FirebaseMessagingService() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        // 요약 알림 텍스트 생성
+        val summaryTitle = "완충 전우회"
+        val summaryText = when {
+            unreadMessageCount == 1 -> body
+            recentSenders.isNotEmpty() -> {
+                val sendersText = if (recentSenders.size > 2) {
+                    "${recentSenders.takeLast(2).joinToString(", ")} 외 ${recentSenders.size - 2}명"
+                } else {
+                    recentSenders.joinToString(", ")
+                }
+                "${unreadMessageCount}개의 새 메시지 ($sendersText)"
+            }
+            else -> "${unreadMessageCount}개의 새 메시지"
+        }
+
         // 알림 빌드 (효과음 없이 진동만)
         val notificationBuilder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentTitle(title)
-            .setContentText(body)
+            .setContentTitle(summaryTitle)
+            .setContentText(summaryText)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setContentIntent(pendingIntent)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setSound(null)
             .setVibrate(longArrayOf(0, 200))
+            .setNumber(unreadMessageCount)  // 배지 카운트
 
-        // 알림 표시 (ID를 시간 기반으로 해서 여러 알림 표시 가능)
-        val notificationId = System.currentTimeMillis().toInt()
-        notificationManager.notify(notificationId, notificationBuilder.build())
+        // 고정 ID로 알림 표시 (기존 알림 교체)
+        notificationManager.notify(NOTIFICATION_ID, notificationBuilder.build())
     }
 
     private fun createNotificationChannel(notificationManager: NotificationManager) {
