@@ -225,7 +225,10 @@ class MainActivity : ComponentActivity() {
                                 onRewarded = { viewModel.extendDangerCountdown() },
                                 onAdDismissed = { /* 광고 닫힌 후 추가 작업 없음 */ }
                             )
-                        }
+                        },
+                        // 이펙트 관련
+                        onSendEffect = { effectType -> viewModel.sendEffect(effectType) },
+                        onEffectComplete = { viewModel.onEffectComplete() }
                     )
                     }
                 }
@@ -272,7 +275,10 @@ class MainActivity : ComponentActivity() {
         blockedUserIds: Set<String>,
         onBlockUser: (String) -> Unit,
         onUnblockUser: (String) -> Unit,
-        onRequestSupply: () -> Unit
+        onRequestSupply: () -> Unit,
+        // 이펙트 관련
+        onSendEffect: (com.elites.fullcharge.data.RankEffect.EffectType) -> Unit,
+        onEffectComplete: () -> Unit
     ) {
         AnimatedContent(
             targetState = uiState.currentScreen,
@@ -377,7 +383,13 @@ class MainActivity : ComponentActivity() {
                         // 실시간 합류/퇴장 카운트
                         recentJoinCount = uiState.recentJoinCount,
                         recentLeaveCount = uiState.recentLeaveCount,
-                        showJoinLeaveIndicator = uiState.showJoinLeaveIndicator
+                        showJoinLeaveIndicator = uiState.showJoinLeaveIndicator,
+                        // 이펙트 관련
+                        onSendEffect = onSendEffect,
+                        effectCooldownRemaining = uiState.effectCooldownRemaining,
+                        currentEffect = uiState.currentEffect,
+                        currentEffectSender = uiState.currentEffectSender,
+                        onEffectComplete = onEffectComplete
                     )
                 }
                 AppScreen.EXILE -> {

@@ -19,6 +19,7 @@ class ChatRepository {
     private val usersRef: DatabaseReference = database.getReference("online_users")
     private val reportsRef: DatabaseReference = database.getReference("reports")
     private val allTimeRecordsRef: DatabaseReference = database.getReference("all_time_records")
+    private val effectsRef: DatabaseReference = database.getReference("effects")
     private val tokensRef: DatabaseReference = database.getReference("fcm_tokens")
     private val connectedRef: DatabaseReference = database.getReference(".info/connected")
 
@@ -274,6 +275,56 @@ class ChatRepository {
         messagesRef.child(key).setValue(message.toMap()).await()
     }
 
+    /**
+     * 이펙트 전송
+     */
+    suspend fun sendEffect(effectId: String, userId: String, nickname: String) {
+        val key = effectsRef.push().key ?: UUID.randomUUID().toString()
+        val effectData = mapOf(
+            "id" to key,
+            "effectId" to effectId,
+            "userId" to userId,
+            "nickname" to nickname,
+            "timestamp" to com.google.firebase.database.ServerValue.TIMESTAMP
+        )
+        effectsRef.child(key).setValue(effectData).await()
+
+        // 5초 후 자동 삭제 (클라이언트에서 처리)
+        effectsRef.child(key).onDisconnect().removeValue()
+    }
+
+    /**
+     * 이펙트 수신 리스너
+     */
+    fun observeEffects(onEffectReceived: (effectId: String, senderNickname: String) -> Unit): ValueEventListener {
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                // 가장 최근 이펙트만 처리
+                val latestEffect = snapshot.children.lastOrNull() ?: return
+                val effectId = latestEffect.child("effectId").getValue(String::class.java) ?: return
+                val nickname = latestEffect.child("nickname").getValue(String::class.java) ?: return
+                val timestamp = latestEffect.child("timestamp").getValue(Long::class.java) ?: 0L
+
+                // 5초 이내의 이펙트만 처리
+                if (System.currentTimeMillis() - timestamp < 5000) {
+                    onEffectReceived(effectId, nickname)
+                }
+
+                // 처리된 이펙트 삭제
+                latestEffect.ref.removeValue()
+            }
+
+            override fun onCancelled(error: DatabaseError) {}
+        }
+
+        effectsRef.orderByChild("timestamp").limitToLast(1).addValueEventListener(listener)
+        return listener
+    }
+
+    fun removeEffectListener(listener: ValueEventListener) {
+        effectsRef.removeEventListener(listener)
+    }
+
     fun getOnlineUsers(): Flow<List<EliteUser>> = callbackFlow {
         val listener = object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
@@ -415,6 +466,22 @@ class ChatRepository {
      * - 앱 강제 종료, 네트워크 끊김 등 모든 상황에서 동작
      */
     private suspend fun setupDisconnectHandlers(userId: String, nickname: String) {
+        // 기존 핸들러가 있으면 먼저 취소 (중복 등록 방지)
+        try {
+            disconnectMessageKey?.let { existingKey ->
+                messagesRef.child(existingKey)
+                    .onDisconnect()
+                    .cancel()
+                    .await()
+            }
+            usersRef.child(userId).child("isOnline")
+                .onDisconnect()
+                .cancel()
+                .await()
+        } catch (e: Exception) {
+            // 기존 핸들러가 없거나 이미 발동된 경우 무시
+        }
+
         // 1. 온라인 상태를 false로 설정
         usersRef.child(userId).child("isOnline")
             .onDisconnect()

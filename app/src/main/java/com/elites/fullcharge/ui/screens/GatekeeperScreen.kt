@@ -78,8 +78,11 @@ fun GatekeeperScreen(
         )
     }
 
-    LaunchedEffect(restorableSessionDuration, isElite) {
-        if (restorableSessionDuration != null && isElite) {
+    // 복구 가능한 세션이 있으면 모달 표시 (isElite 조건 제거)
+    // 사용자가 충전기를 뺀 상태로 앱에 진입해도 복구 모달을 볼 수 있도록 함
+    // 실제 입장 버튼은 isElite일 때만 활성화되므로 문제 없음
+    LaunchedEffect(restorableSessionDuration) {
+        if (restorableSessionDuration != null) {
             showRestoreDialog = true
         }
     }
@@ -87,6 +90,7 @@ fun GatekeeperScreen(
     if (showRestoreDialog && restorableSessionDuration != null) {
         RankRestoreDialog(
             previousDuration = restorableSessionDuration,
+            isElite = isElite,
             onRestoreWithAd = {
                 showRestoreDialog = false
                 onRestoreWithAd(restorableSessionDuration)
@@ -758,6 +762,7 @@ private fun AdminLoginDialog(
 @Composable
 private fun RankRestoreDialog(
     previousDuration: Long,
+    isElite: Boolean,
     onRestoreWithAd: () -> Unit,
     onStartFresh: () -> Unit,
     onDismiss: () -> Unit
@@ -838,23 +843,44 @@ private fun RankRestoreDialog(
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = "광고를 시청하면 이전 계급으로\n바로 시작할 수 있어요",
-                    fontSize = 13.sp,
-                    color = ForegroundDim,
-                    textAlign = TextAlign.Center,
-                    lineHeight = 18.sp
-                )
+
+                // 배터리 상태에 따른 안내 문구
+                if (isElite) {
+                    Text(
+                        text = "광고를 시청하면 이전 계급으로\n바로 시작할 수 있어요",
+                        fontSize = 13.sp,
+                        color = ForegroundDim,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 18.sp
+                    )
+                } else {
+                    Text(
+                        text = "⚡ 100% 충전 후 복구할 수 있어요",
+                        fontSize = 13.sp,
+                        color = CrisisRed,
+                        textAlign = TextAlign.Center,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
             }
         },
         confirmButton = {
             Button(
                 onClick = onRestoreWithAd,
-                colors = ButtonDefaults.buttonColors(containerColor = EliteGreen),
+                enabled = isElite,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = EliteGreen,
+                    disabledContainerColor = MutedBlack,
+                    disabledContentColor = ForegroundMuted
+                ),
                 shape = RoundedCornerShape(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(text = "광고 보고 복구", fontWeight = FontWeight.SemiBold, color = BackgroundBlack)
+                Text(
+                    text = if (isElite) "광고 보고 복구" else "충전 필요",
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (isElite) BackgroundBlack else ForegroundMuted
+                )
             }
         },
         dismissButton = {

@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.elites.fullcharge.data.*
 import com.elites.fullcharge.ui.components.ChargingParticles
+import com.elites.fullcharge.ui.components.EffectOverlay
 import com.elites.fullcharge.ui.components.JoinLeaveIndicator
 import com.elites.fullcharge.ui.components.RankInsignia
 import com.elites.fullcharge.ui.theme.*
@@ -105,6 +106,12 @@ fun ChatScreen(
     recentJoinCount: Int = 0,
     recentLeaveCount: Int = 0,
     showJoinLeaveIndicator: Boolean = false,
+    // 이펙트 관련
+    onSendEffect: (RankEffect.EffectType) -> Unit = {},
+    effectCooldownRemaining: Long = 0L,
+    currentEffect: RankEffect.EffectType? = null,
+    currentEffectSender: String = "",
+    onEffectComplete: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var messageInput by remember { mutableStateOf("") }
@@ -312,6 +319,11 @@ fun ChatScreen(
                     messageInput = messageInput + "[emoji:${emoji.id}]"
                     showEmojiPicker = false
                 },
+                onEffectSelected = { effect ->
+                    onSendEffect(effect)
+                    showEmojiPicker = false
+                },
+                effectCooldownRemaining = effectCooldownRemaining,
                 onDismiss = { showEmojiPicker = false }
             )
         }
@@ -326,6 +338,13 @@ fun ChatScreen(
                 onRequestSupply = onRequestSupply
             )
         }
+
+        // ===== EFFECT OVERLAY =====
+        EffectOverlay(
+            effectType = currentEffect,
+            senderNickname = currentEffectSender,
+            onEffectComplete = onEffectComplete
+        )
     }
 }
 
@@ -3366,11 +3385,17 @@ private fun getTimeAgo(timestamp: Long): String {
 private fun EmojiPickerSheet(
     currentRank: EliteRank,
     onEmojiSelected: (RankEmoji.EmojiItem) -> Unit,
+    onEffectSelected: (RankEffect.EffectType) -> Unit = {},
+    effectCooldownRemaining: Long = 0L,
     onDismiss: () -> Unit
 ) {
     val availableEmojis = RankEmoji.getAvailableEmojis(currentRank)
     val allEmojis = RankEmoji.getAllEmojis()
+    val availableEffects = RankEffect.getAvailableEffects(currentRank)
     val sheetState = rememberModalBottomSheetState()
+
+    // 탭 상태: 0 = 이모지, 1 = 이펙트
+    var selectedTab by remember { mutableIntStateOf(0) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -3390,12 +3415,33 @@ private fun EmojiPickerSheet(
                         .background(ForegroundMuted)
                 )
                 Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = "계급 전용 이모지",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = ForegroundWhite
-                )
+
+                // 탭 버튼
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // 이모지 탭
+                    TabButton(
+                        text = "이모지",
+                        icon = "😀",
+                        isSelected = selectedTab == 0,
+                        onClick = { selectedTab = 0 },
+                        modifier = Modifier.weight(1f)
+                    )
+                    // 이펙트 탭
+                    TabButton(
+                        text = "이펙트",
+                        icon = "⚡",
+                        isSelected = selectedTab == 1,
+                        onClick = { selectedTab = 1 },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = "현재 계급: ${currentRank.koreanName}",
                     fontSize = 12.sp,
@@ -3411,45 +3457,259 @@ private fun EmojiPickerSheet(
                 .padding(horizontal = 16.dp)
                 .padding(bottom = 32.dp)
         ) {
-            // 부사관 이모지 (ID: 1~12)
-            EmojiSection(
-                title = "부사관 이모지",
-                titleColor = Color(0xFF3B82F6),
-                emojis = allEmojis.filter { it.id in 1..12 },
-                availableEmojis = availableEmojis,
-                onEmojiSelected = onEmojiSelected
-            )
-            Spacer(modifier = Modifier.height(16.dp))
+            when (selectedTab) {
+                0 -> {
+                    // 이모지 탭 내용
+                    // 부사관 이모지 (ID: 1~12)
+                    EmojiSection(
+                        title = "부사관 이모지",
+                        titleColor = Color(0xFF3B82F6),
+                        emojis = allEmojis.filter { it.id in 1..12 },
+                        availableEmojis = availableEmojis,
+                        onEmojiSelected = onEmojiSelected
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
 
-            // 장교 이모지 (ID: 101~199)
-            val coEmojis = allEmojis.filter { it.id in 101..199 }
-            if (coEmojis.isNotEmpty()) {
-                EmojiSection(
-                    title = "장교 이모지",
-                    titleColor = Color(0xFF10B981),
-                    emojis = coEmojis,
-                    availableEmojis = availableEmojis,
-                    onEmojiSelected = onEmojiSelected,
-                    lockedMessage = if (currentRank.ordinal < EliteRank.SECOND_LIEUTENANT.ordinal)
-                        "소위 이상 사용 가능" else null
-                )
-                Spacer(modifier = Modifier.height(16.dp))
+                    // 장교 이모지 (ID: 101~199)
+                    val coEmojis = allEmojis.filter { it.id in 101..199 }
+                    if (coEmojis.isNotEmpty()) {
+                        EmojiSection(
+                            title = "장교 이모지",
+                            titleColor = Color(0xFF10B981),
+                            emojis = coEmojis,
+                            availableEmojis = availableEmojis,
+                            onEmojiSelected = onEmojiSelected,
+                            lockedMessage = if (currentRank.ordinal < EliteRank.SECOND_LIEUTENANT.ordinal)
+                                "소위 이상 사용 가능" else null
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+
+                    // 영관급 이모지 (ID: 201~300) - 추후 추가
+                    val foEmojis = allEmojis.filter { it.id in 201..300 }
+                    if (foEmojis.isNotEmpty()) {
+                        EmojiSection(
+                            title = "영관급 이모지",
+                            titleColor = Color(0xFF7C3AED),
+                            emojis = foEmojis,
+                            availableEmojis = availableEmojis,
+                            onEmojiSelected = onEmojiSelected,
+                            lockedMessage = if (currentRank.ordinal < EliteRank.MAJOR.ordinal)
+                                "소령 이상 사용 가능" else null
+                        )
+                    }
+                }
+                1 -> {
+                    // 이펙트 탭 내용
+                    // 쿨다운 표시
+                    if (effectCooldownRemaining > 0) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(
+                                    CrisisRed.copy(alpha = 0.1f),
+                                    RoundedCornerShape(8.dp)
+                                )
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "⏱️ 재사용 대기: ${effectCooldownRemaining / 1000}초",
+                                fontSize = 14.sp,
+                                color = CrisisRed
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+
+                    // 부사관 이펙트
+                    val ncoEffects = RankEffect.EffectType.entries.filter { RankEffect.isNcoEffect(it) }
+                    EffectSection(
+                        title = "부사관 이펙트",
+                        titleColor = Color(0xFF3B82F6),
+                        effects = ncoEffects,
+                        availableEffects = availableEffects,
+                        onEffectSelected = onEffectSelected,
+                        isCooldown = effectCooldownRemaining > 0
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // 장교 이펙트
+                    val officerEffects = RankEffect.EffectType.entries.filter { RankEffect.isOfficerEffect(it) }
+                    EffectSection(
+                        title = "장교 이펙트",
+                        titleColor = Color(0xFF10B981),
+                        effects = officerEffects,
+                        availableEffects = availableEffects,
+                        onEffectSelected = onEffectSelected,
+                        isCooldown = effectCooldownRemaining > 0,
+                        lockedMessage = if (currentRank.ordinal < EliteRank.SECOND_LIEUTENANT.ordinal)
+                            "소위 이상 사용 가능" else null
+                    )
+                }
             }
+        }
+    }
+}
 
-            // 영관급 이모지 (ID: 201~300) - 추후 추가
-            val foEmojis = allEmojis.filter { it.id in 201..300 }
-            if (foEmojis.isNotEmpty()) {
-                EmojiSection(
-                    title = "영관급 이모지",
-                    titleColor = Color(0xFF7C3AED),
-                    emojis = foEmojis,
-                    availableEmojis = availableEmojis,
-                    onEmojiSelected = onEmojiSelected,
-                    lockedMessage = if (currentRank.ordinal < EliteRank.MAJOR.ordinal)
-                        "소령 이상 사용 가능" else null
+@Composable
+private fun TabButton(
+    text: String,
+    icon: String,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .clickable { onClick() },
+        color = if (isSelected) EliteGreen.copy(alpha = 0.2f) else Color.Transparent,
+        shape = RoundedCornerShape(8.dp),
+        border = if (isSelected) {
+            androidx.compose.foundation.BorderStroke(1.dp, EliteGreen)
+        } else {
+            androidx.compose.foundation.BorderStroke(1.dp, BorderMuted)
+        }
+    ) {
+        Row(
+            modifier = Modifier.padding(vertical = 10.dp, horizontal = 16.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(text = icon, fontSize = 16.sp)
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = text,
+                fontSize = 14.sp,
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                color = if (isSelected) EliteGreen else ForegroundMuted
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun EffectSection(
+    title: String,
+    titleColor: Color,
+    effects: List<RankEffect.EffectType>,
+    availableEffects: List<RankEffect.EffectType>,
+    onEffectSelected: (RankEffect.EffectType) -> Unit,
+    isCooldown: Boolean,
+    lockedMessage: String? = null
+) {
+    Column {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = title,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = titleColor
+            )
+            if (lockedMessage != null) {
+                Text(
+                    text = "🔒 $lockedMessage",
+                    fontSize = 11.sp,
+                    color = ForegroundMuted
                 )
             }
         }
+        Spacer(modifier = Modifier.height(8.dp))
+
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            effects.forEach { effect ->
+                val isAvailable = availableEffects.contains(effect)
+                val canUse = isAvailable && !isCooldown
+                EffectButton(
+                    effect = effect,
+                    isAvailable = isAvailable,
+                    isCooldown = isCooldown && isAvailable,
+                    onClick = { if (canUse) onEffectSelected(effect) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun EffectButton(
+    effect: RankEffect.EffectType,
+    isAvailable: Boolean,
+    isCooldown: Boolean,
+    onClick: () -> Unit
+) {
+    val canUse = isAvailable && !isCooldown
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier = Modifier
+                .size(56.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(
+                    when {
+                        isCooldown -> MutedBlack.copy(alpha = 0.5f)
+                        isAvailable -> MutedBlack
+                        else -> MutedBlack.copy(alpha = 0.3f)
+                    }
+                )
+                .then(
+                    if (canUse) Modifier.clickable { onClick() }
+                    else Modifier
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = effect.emoji,
+                fontSize = 28.sp,
+                modifier = Modifier.graphicsLayer {
+                    alpha = if (canUse) 1f else 0.4f
+                }
+            )
+            if (!isAvailable) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.5f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "🔒",
+                        fontSize = 16.sp
+                    )
+                }
+            } else if (isCooldown) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.4f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "⏱️",
+                        fontSize = 16.sp
+                    )
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = effect.displayName,
+            fontSize = 10.sp,
+            color = if (canUse) ForegroundMuted else ForegroundMuted.copy(alpha = 0.5f)
+        )
     }
 }
 
