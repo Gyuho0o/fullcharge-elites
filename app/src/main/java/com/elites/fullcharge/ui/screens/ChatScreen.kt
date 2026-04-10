@@ -40,7 +40,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.elites.fullcharge.data.*
 import com.elites.fullcharge.ui.components.ChargingParticles
-import com.elites.fullcharge.ui.components.EffectOverlay
 import com.elites.fullcharge.ui.components.JoinLeaveIndicator
 import com.elites.fullcharge.ui.components.RankInsignia
 import com.elites.fullcharge.ui.theme.*
@@ -107,12 +106,10 @@ fun ChatScreen(
     recentJoinCount: Int = 0,
     recentLeaveCount: Int = 0,
     showJoinLeaveIndicator: Boolean = false,
-    // 이펙트 관련
-    onSendEffect: (RankEffect.EffectType) -> Unit = {},
-    effectCooldownRemaining: Long = 0L,
-    currentEffect: RankEffect.EffectType? = null,
-    currentEffectSender: String = "",
-    onEffectComplete: () -> Unit = {},
+    // 버블 이펙트 관련
+    onActivateBubbleEffect: (RankEffect.EffectType) -> Unit = {},
+    myBubbleEffect: RankEffect.EffectType? = null,
+    myBubbleEffectExpiry: Long = 0L,
     modifier: Modifier = Modifier
 ) {
     var messageInput by remember { mutableStateOf("") }
@@ -276,15 +273,22 @@ fun ChatScreen(
                             AnnouncementMessage(message = message)
                         // 일반 시스템 메시지
                         message.isSystemMessage -> SystemMessage(message = message)
-                        else -> UserMessage(
-                            message = message,
-                            isMine = message.userId == currentUserId,
-                            currentUserId = currentUserId,
-                            onToggleReaction = onToggleReaction,
-                            isBlocked = blockedUserIds.contains(message.userId),
-                            onBlockUser = { onBlockUser(message.userId) },
-                            onUnblockUser = { onUnblockUser(message.userId) }
-                        )
+                        else -> {
+                            // 발신자의 버블 이펙트 조회
+                            val senderUser = onlineUsers.find { it.userId == message.userId }
+                            val bubbleEffect = senderUser?.activeBubbleEffect
+
+                            UserMessage(
+                                message = message,
+                                isMine = message.userId == currentUserId,
+                                currentUserId = currentUserId,
+                                onToggleReaction = onToggleReaction,
+                                isBlocked = blockedUserIds.contains(message.userId),
+                                onBlockUser = { onBlockUser(message.userId) },
+                                onUnblockUser = { onUnblockUser(message.userId) },
+                                bubbleEffect = bubbleEffect
+                            )
+                        }
                     }
                 }
             }
@@ -321,10 +325,11 @@ fun ChatScreen(
                     showEmojiPicker = false
                 },
                 onEffectSelected = { effect ->
-                    onSendEffect(effect)
+                    onActivateBubbleEffect(effect)
                     showEmojiPicker = false
                 },
-                effectCooldownRemaining = effectCooldownRemaining,
+                myBubbleEffect = myBubbleEffect,
+                myBubbleEffectExpiry = myBubbleEffectExpiry,
                 onDismiss = { showEmojiPicker = false }
             )
         }
@@ -340,12 +345,6 @@ fun ChatScreen(
             )
         }
 
-        // ===== EFFECT OVERLAY =====
-        EffectOverlay(
-            effectType = currentEffect,
-            senderNickname = currentEffectSender,
-            onEffectComplete = onEffectComplete
-        )
     }
 }
 
@@ -1402,7 +1401,8 @@ private fun UserMessage(
     onToggleReaction: (String, String) -> Unit = { _, _ -> },
     isBlocked: Boolean = false,
     onBlockUser: () -> Unit = {},
-    onUnblockUser: () -> Unit = {}
+    onUnblockUser: () -> Unit = {},
+    bubbleEffect: RankEffect.EffectType? = null
 ) {
     val rank = try {
         EliteRank.valueOf(message.rank)
@@ -1515,6 +1515,45 @@ private fun UserMessage(
                 )
             }
 
+            // 버블 이펙트 색상 정의
+            val effectColor = when (bubbleEffect) {
+                RankEffect.EffectType.CHARGING -> Color(0xFF00FF00)  // 밝은 초록
+                RankEffect.EffectType.SPARK_BORDER -> Color(0xFFFFD700)  // 금색
+                RankEffect.EffectType.GLOW_GREEN -> EliteGreen
+                RankEffect.EffectType.PULSE -> Color(0xFFFF6B9D)  // 핑크
+                RankEffect.EffectType.ELECTRIC -> Color(0xFF00BFFF)  // 전기 파랑
+                RankEffect.EffectType.FULL_CHARGE -> Color(0xFFFFD700)  // 금색
+                RankEffect.EffectType.GOLDEN_AURA -> Color(0xFFFFD700)  // 금색
+                RankEffect.EffectType.FIRE_BORDER -> Color(0xFFFF4500)  // 불꽃 주황
+                RankEffect.EffectType.RAINBOW -> Color(0xFFFF00FF)  // 마젠타 (무지개 시작)
+                RankEffect.EffectType.ELITE_GLOW -> Color(0xFF9400D3)  // 보라
+                null -> Color.Transparent
+            }
+
+            // 버블 이펙트 애니메이션 (이펙트가 있을 때만)
+            val hasBubbleEffect = bubbleEffect != null
+            val infiniteTransition = rememberInfiniteTransition(label = "bubble_effect")
+
+            val pulseAlpha by infiniteTransition.animateFloat(
+                initialValue = if (hasBubbleEffect) 0.5f else 0f,
+                targetValue = if (hasBubbleEffect) 1f else 0f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(800, easing = FastOutSlowInEasing),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "pulse_alpha"
+            )
+
+            val pulseWidth by infiniteTransition.animateFloat(
+                initialValue = if (hasBubbleEffect) 1.5f else 0f,
+                targetValue = if (hasBubbleEffect) 3f else 0f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(800, easing = FastOutSlowInEasing),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "pulse_width"
+            )
+
             // Message Bubble with long press
             Box(
                 modifier = Modifier
@@ -1523,8 +1562,15 @@ private fun UserMessage(
                     .clip(bubbleShape)
                     .background(if (isMine) EliteGreen else CardBlack)
                     .then(
-                        if (!isMine) Modifier.border(1.dp, EliteGreen.copy(alpha = 0.2f), bubbleShape)
-                        else Modifier
+                        when {
+                            hasBubbleEffect -> Modifier.border(
+                                width = pulseWidth.dp,
+                                color = effectColor.copy(alpha = pulseAlpha),
+                                shape = bubbleShape
+                            )
+                            !isMine -> Modifier.border(1.dp, EliteGreen.copy(alpha = 0.2f), bubbleShape)
+                            else -> Modifier
+                        }
                     )
                     .combinedClickable(
                         onClick = { if (showReactionPicker) showReactionPicker = false },
@@ -1532,6 +1578,17 @@ private fun UserMessage(
                     )
                     .padding(12.dp)
             ) {
+                // 이펙트 아이콘 표시 (버블 이펙트가 있을 때)
+                if (hasBubbleEffect) {
+                    Text(
+                        text = bubbleEffect?.emoji ?: "",
+                        fontSize = 10.sp,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .offset(x = 4.dp, y = (-8).dp)
+                    )
+                }
+
                 MessageTextWithEmoji(
                     text = message.message,
                     fontSize = 14.sp,
@@ -3381,7 +3438,8 @@ private fun EmojiPickerSheet(
     currentRank: EliteRank,
     onEmojiSelected: (RankEmoji.EmojiItem) -> Unit,
     onEffectSelected: (RankEffect.EffectType) -> Unit = {},
-    effectCooldownRemaining: Long = 0L,
+    myBubbleEffect: RankEffect.EffectType? = null,
+    myBubbleEffectExpiry: Long = 0L,
     onDismiss: () -> Unit
 ) {
     val availableEmojis = RankEmoji.getAvailableEmojis(currentRank)
@@ -3496,13 +3554,21 @@ private fun EmojiPickerSheet(
                 }
                 1 -> {
                     // 이펙트 탭 내용
-                    // 쿨다운 표시
-                    if (effectCooldownRemaining > 0) {
+                    // 현재 활성 이펙트 표시
+                    val currentTime = System.currentTimeMillis()
+                    val remainingMs = if (myBubbleEffect != null && myBubbleEffectExpiry > currentTime) {
+                        myBubbleEffectExpiry - currentTime
+                    } else 0L
+                    val remainingSec = (remainingMs / 1000).toInt()
+                    val remainingMin = remainingSec / 60
+                    val remainingSecInMin = remainingSec % 60
+
+                    if (myBubbleEffect != null && remainingMs > 0) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .background(
-                                    CrisisRed.copy(alpha = 0.1f),
+                                    EliteGreen.copy(alpha = 0.1f),
                                     RoundedCornerShape(8.dp)
                                 )
                                 .padding(12.dp),
@@ -3510,35 +3576,43 @@ private fun EmojiPickerSheet(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "⏱️ 재사용 대기: ${effectCooldownRemaining / 1000}초",
+                                text = "${myBubbleEffect.emoji} ${myBubbleEffect.displayName} 활성 중 (${remainingMin}:${String.format("%02d", remainingSecInMin)} 남음)",
                                 fontSize = 14.sp,
-                                color = CrisisRed
+                                color = EliteGreen
                             )
                         }
                         Spacer(modifier = Modifier.height(16.dp))
                     }
 
+                    // 설명 텍스트
+                    Text(
+                        text = "이펙트를 선택하면 내 말풍선에 특수 효과가 적용됩니다",
+                        fontSize = 12.sp,
+                        color = ForegroundMuted,
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    )
+
                     // 부사관 이펙트
                     val ncoEffects = RankEffect.EffectType.entries.filter { RankEffect.isNcoEffect(it) }
                     EffectSection(
-                        title = "부사관 이펙트",
+                        title = "부사관 이펙트 (3분)",
                         titleColor = Color(0xFF3B82F6),
                         effects = ncoEffects,
                         availableEffects = availableEffects,
                         onEffectSelected = onEffectSelected,
-                        isCooldown = effectCooldownRemaining > 0
+                        activeEffect = myBubbleEffect
                     )
                     Spacer(modifier = Modifier.height(16.dp))
 
                     // 장교 이펙트
                     val officerEffects = RankEffect.EffectType.entries.filter { RankEffect.isOfficerEffect(it) }
                     EffectSection(
-                        title = "장교 이펙트",
+                        title = "장교 이펙트 (5분)",
                         titleColor = Color(0xFF10B981),
                         effects = officerEffects,
                         availableEffects = availableEffects,
                         onEffectSelected = onEffectSelected,
-                        isCooldown = effectCooldownRemaining > 0,
+                        activeEffect = myBubbleEffect,
                         lockedMessage = if (currentRank.ordinal < EliteRank.SECOND_LIEUTENANT.ordinal)
                             "소위 이상 사용 가능" else null
                     )
@@ -3593,7 +3667,7 @@ private fun EffectSection(
     effects: List<RankEffect.EffectType>,
     availableEffects: List<RankEffect.EffectType>,
     onEffectSelected: (RankEffect.EffectType) -> Unit,
-    isCooldown: Boolean,
+    activeEffect: RankEffect.EffectType? = null,
     lockedMessage: String? = null
 ) {
     Column {
@@ -3625,12 +3699,12 @@ private fun EffectSection(
         ) {
             effects.forEach { effect ->
                 val isAvailable = availableEffects.contains(effect)
-                val canUse = isAvailable && !isCooldown
+                val isActive = activeEffect == effect
                 EffectButton(
                     effect = effect,
                     isAvailable = isAvailable,
-                    isCooldown = isCooldown && isAvailable,
-                    onClick = { if (canUse) onEffectSelected(effect) }
+                    isActive = isActive,
+                    onClick = { if (isAvailable) onEffectSelected(effect) }
                 )
             }
         }
@@ -3641,11 +3715,9 @@ private fun EffectSection(
 private fun EffectButton(
     effect: RankEffect.EffectType,
     isAvailable: Boolean,
-    isCooldown: Boolean,
+    isActive: Boolean,
     onClick: () -> Unit
 ) {
-    val canUse = isAvailable && !isCooldown
-
     Column(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -3655,13 +3727,17 @@ private fun EffectButton(
                 .clip(RoundedCornerShape(12.dp))
                 .background(
                     when {
-                        isCooldown -> MutedBlack.copy(alpha = 0.5f)
+                        isActive -> EliteGreen.copy(alpha = 0.3f)
                         isAvailable -> MutedBlack
                         else -> MutedBlack.copy(alpha = 0.3f)
                     }
                 )
                 .then(
-                    if (canUse) Modifier.clickable { onClick() }
+                    if (isActive) Modifier.border(2.dp, EliteGreen, RoundedCornerShape(12.dp))
+                    else Modifier
+                )
+                .then(
+                    if (isAvailable) Modifier.clickable { onClick() }
                     else Modifier
                 ),
             contentAlignment = Alignment.Center
@@ -3670,7 +3746,7 @@ private fun EffectButton(
                 text = effect.emoji,
                 fontSize = 28.sp,
                 modifier = Modifier.graphicsLayer {
-                    alpha = if (canUse) 1f else 0.4f
+                    alpha = if (isAvailable) 1f else 0.4f
                 }
             )
             if (!isAvailable) {
@@ -3685,16 +3761,20 @@ private fun EffectButton(
                         fontSize = 16.sp
                     )
                 }
-            } else if (isCooldown) {
+            } else if (isActive) {
                 Box(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.4f)),
+                        .align(Alignment.TopEnd)
+                        .offset(x = 4.dp, y = (-4).dp)
+                        .size(16.dp)
+                        .clip(CircleShape)
+                        .background(EliteGreen),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "⏱️",
-                        fontSize = 16.sp
+                        text = "✓",
+                        fontSize = 10.sp,
+                        color = BackgroundBlack
                     )
                 }
             }
@@ -3703,7 +3783,7 @@ private fun EffectButton(
         Text(
             text = effect.displayName,
             fontSize = 10.sp,
-            color = if (canUse) ForegroundMuted else ForegroundMuted.copy(alpha = 0.5f)
+            color = if (isActive) EliteGreen else if (isAvailable) ForegroundMuted else ForegroundMuted.copy(alpha = 0.5f)
         )
     }
 }

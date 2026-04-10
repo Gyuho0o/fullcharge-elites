@@ -276,53 +276,28 @@ class ChatRepository {
     }
 
     /**
-     * 이펙트 전송
+     * 버블 이펙트 활성화
+     * 사용자의 bubbleEffectId와 bubbleEffectExpiry를 설정하여
+     * 해당 사용자의 모든 메시지에 버블 이펙트가 표시되도록 함
      */
-    suspend fun sendEffect(effectId: String, userId: String, nickname: String) {
-        val key = effectsRef.push().key ?: UUID.randomUUID().toString()
-        val effectData = mapOf(
-            "id" to key,
-            "effectId" to effectId,
-            "userId" to userId,
-            "nickname" to nickname,
-            "timestamp" to com.google.firebase.database.ServerValue.TIMESTAMP
+    suspend fun activateBubbleEffect(userId: String, effectType: RankEffect.EffectType) {
+        val expiry = System.currentTimeMillis() + effectType.durationMs
+        val updates = mapOf(
+            "bubbleEffectId" to effectType.id,
+            "bubbleEffectExpiry" to expiry
         )
-        effectsRef.child(key).setValue(effectData).await()
-
-        // 5초 후 자동 삭제 (클라이언트에서 처리)
-        effectsRef.child(key).onDisconnect().removeValue()
+        usersRef.child(userId).updateChildren(updates).await()
     }
 
     /**
-     * 이펙트 수신 리스너
+     * 버블 이펙트 비활성화
      */
-    fun observeEffects(onEffectReceived: (effectId: String, senderNickname: String) -> Unit): ValueEventListener {
-        val listener = object : ValueEventListener {
-            override fun onDataChange(snapshot: DataSnapshot) {
-                // 가장 최근 이펙트만 처리
-                val latestEffect = snapshot.children.lastOrNull() ?: return
-                val effectId = latestEffect.child("effectId").getValue(String::class.java) ?: return
-                val nickname = latestEffect.child("nickname").getValue(String::class.java) ?: return
-                val timestamp = latestEffect.child("timestamp").getValue(Long::class.java) ?: 0L
-
-                // 5초 이내의 이펙트만 처리
-                if (System.currentTimeMillis() - timestamp < 5000) {
-                    onEffectReceived(effectId, nickname)
-                }
-
-                // 처리된 이펙트 삭제
-                latestEffect.ref.removeValue()
-            }
-
-            override fun onCancelled(error: DatabaseError) {}
-        }
-
-        effectsRef.orderByChild("timestamp").limitToLast(1).addValueEventListener(listener)
-        return listener
-    }
-
-    fun removeEffectListener(listener: ValueEventListener) {
-        effectsRef.removeEventListener(listener)
+    suspend fun deactivateBubbleEffect(userId: String) {
+        val updates = mapOf<String, Any?>(
+            "bubbleEffectId" to null,
+            "bubbleEffectExpiry" to 0L
+        )
+        usersRef.child(userId).updateChildren(updates).await()
     }
 
     fun getOnlineUsers(): Flow<List<EliteUser>> = callbackFlow {
@@ -330,13 +305,24 @@ class ChatRepository {
             override fun onDataChange(snapshot: DataSnapshot) {
                 val users = snapshot.children.mapNotNull { child ->
                     try {
-                        val userId = child.child("userId").getValue(String::class.java) ?: ""
+                        val oderId = child.child("userId").getValue(String::class.java) ?: ""
                         val nickname = child.child("nickname").getValue(String::class.java) ?: ""
                         val sessionStartTime = child.child("sessionStartTime").getValue(Long::class.java) ?: 0L
                         val lastActiveTime = child.child("lastActiveTime").getValue(Long::class.java) ?: 0L
                         val isOnline = child.child("isOnline").getValue(Boolean::class.java) ?: false
                         val isAdmin = child.child("isAdmin").getValue(Boolean::class.java) ?: false
-                        EliteUser(userId, nickname, sessionStartTime, lastActiveTime, isOnline, isAdmin)
+                        val bubbleEffectId = child.child("bubbleEffectId").getValue(String::class.java)
+                        val bubbleEffectExpiry = child.child("bubbleEffectExpiry").getValue(Long::class.java) ?: 0L
+                        EliteUser(
+                            userId = oderId,
+                            nickname = nickname,
+                            sessionStartTime = sessionStartTime,
+                            lastActiveTime = lastActiveTime,
+                            isOnline = isOnline,
+                            isAdmin = isAdmin,
+                            bubbleEffectId = bubbleEffectId,
+                            bubbleEffectExpiry = bubbleEffectExpiry
+                        )
                     } catch (e: Exception) {
                         null
                     }

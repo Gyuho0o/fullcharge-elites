@@ -226,9 +226,8 @@ class MainActivity : ComponentActivity() {
                                 onAdDismissed = { /* 광고 닫힌 후 추가 작업 없음 */ }
                             )
                         },
-                        // 이펙트 관련
-                        onSendEffect = { effectType -> viewModel.sendEffect(effectType) },
-                        onEffectComplete = { viewModel.onEffectComplete() }
+                        // 버블 이펙트 관련
+                        onActivateBubbleEffect = { effectType -> viewModel.activateBubbleEffect(effectType) }
                     )
                     }
                 }
@@ -276,9 +275,8 @@ class MainActivity : ComponentActivity() {
         onBlockUser: (String) -> Unit,
         onUnblockUser: (String) -> Unit,
         onRequestSupply: () -> Unit,
-        // 이펙트 관련
-        onSendEffect: (com.elites.fullcharge.data.RankEffect.EffectType) -> Unit,
-        onEffectComplete: () -> Unit
+        // 버블 이펙트 관련
+        onActivateBubbleEffect: (com.elites.fullcharge.data.RankEffect.EffectType) -> Unit
     ) {
         AnimatedContent(
             targetState = uiState.currentScreen,
@@ -384,12 +382,10 @@ class MainActivity : ComponentActivity() {
                         recentJoinCount = uiState.recentJoinCount,
                         recentLeaveCount = uiState.recentLeaveCount,
                         showJoinLeaveIndicator = uiState.showJoinLeaveIndicator,
-                        // 이펙트 관련
-                        onSendEffect = onSendEffect,
-                        effectCooldownRemaining = uiState.effectCooldownRemaining,
-                        currentEffect = uiState.currentEffect,
-                        currentEffectSender = uiState.currentEffectSender,
-                        onEffectComplete = onEffectComplete
+                        // 버블 이펙트 관련
+                        onActivateBubbleEffect = onActivateBubbleEffect,
+                        myBubbleEffect = uiState.myBubbleEffect,
+                        myBubbleEffectExpiry = uiState.myBubbleEffectExpiry
                     )
                 }
                 AppScreen.EXILE -> {

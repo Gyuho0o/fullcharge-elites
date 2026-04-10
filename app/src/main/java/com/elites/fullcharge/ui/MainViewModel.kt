@@ -77,10 +77,9 @@ data class MainUiState(
     val blockedUserIds: Set<String> = emptySet(),
     // 충전 통계 (게이트키퍼 화면용)
     val chargingStats: ElitePreferences.ChargingStats = ElitePreferences.ChargingStats(),
-    // 이펙트 관련
-    val currentEffect: RankEffect.EffectType? = null,
-    val currentEffectSender: String = "",
-    val effectCooldownRemaining: Long = 0L
+    // 버블 이펙트 관련
+    val myBubbleEffect: RankEffect.EffectType? = null,
+    val myBubbleEffectExpiry: Long = 0L
 ) {
     companion object {
         const val DANGER_COUNTDOWN_SECONDS = 10  // 10초 카운트다운
@@ -361,9 +360,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             // 메시지 관찰 시작
             startMessageObservation()
 
-            // 이펙트 관찰 시작
-            startEffectObservation()
-
             // 온라인 사용자 관찰 시작
             startOnlineUsersObservation()
 
@@ -438,9 +434,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             // 메시지 관찰 시작 (로컬 메시지 유지)
             startMessageObservation(preserveLocalMessages = true)
-
-            // 이펙트 관찰 시작
-            startEffectObservation()
 
             // 온라인 사용자 관찰 시작
             startOnlineUsersObservation()
@@ -525,25 +518,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private var effectListener: com.google.firebase.database.ValueEventListener? = null
-
-    private fun startEffectObservation() {
-        // 기존 리스너 제거
-        effectListener?.let { chatRepository.removeEffectListener(it) }
-
-        // 새 리스너 등록
-        effectListener = chatRepository.observeEffects { effectId, senderNickname ->
-            // 본인이 보낸 이펙트는 무시 (이미 로컬에서 처리)
-            if (senderNickname != _uiState.value.nickname) {
-                onEffectReceived(effectId, senderNickname)
-            }
-        }
-    }
-
-    private fun stopEffectObservation() {
-        effectListener?.let { chatRepository.removeEffectListener(it) }
-        effectListener = null
-    }
 
     private fun startOnlineUsersObservation() {
         onlineUsersObserverJob?.cancel()
@@ -781,12 +755,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // ========== 이펙트 관련 ==========
+    // ========== 버블 이펙트 관련 ==========
 
-    private var effectCooldownJob: Job? = null
-    private var lastEffectTime: Long = 0L
+    private var bubbleEffectExpiryJob: Job? = null
 
-    fun sendEffect(effectType: RankEffect.EffectType) {
+    /**
+     * 버블 이펙트 활성화
+     * 사용자의 말풍선에 일정 시간 동안 이펙트가 표시됨
+     */
+    fun activateBubbleEffect(effectType: RankEffect.EffectType) {
         val state = _uiState.value
         val currentRank = EliteRank.fromDuration(state.sessionDuration)
 
@@ -796,70 +773,67 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
-        // 쿨다운 확인
+        // 이미 활성화된 버블 이펙트가 있으면 교체
         val currentTime = System.currentTimeMillis()
-        val cooldownRemaining = (lastEffectTime + effectType.cooldownMs) - currentTime
-        if (cooldownRemaining > 0) {
-            _uiState.update { it.copy(filterErrorMessage = "이펙트 재사용 대기 중 (${cooldownRemaining / 1000}초)") }
-            return
-        }
+        val expiry = currentTime + effectType.durationMs
 
-        // 이펙트 전송 및 본인 화면에 표시
         viewModelScope.launch {
-            // TODO: 테스트 후 딜레이 복원 - delay(400)
+            // Firebase에 버블 이펙트 활성화
+            chatRepository.activateBubbleEffect(state.userId, effectType)
 
-            // 본인 화면에 이펙트 표시
+            // 로컬 상태 업데이트
             _uiState.update {
                 it.copy(
-                    currentEffect = effectType,
-                    currentEffectSender = state.nickname
+                    myBubbleEffect = effectType,
+                    myBubbleEffectExpiry = expiry
                 )
             }
 
-            // Firebase에 이펙트 전송 (다른 사용자에게)
-            chatRepository.sendEffect(
-                effectId = effectType.id,
-                userId = state.userId,
-                nickname = state.nickname
-            )
-
-            // 쿨다운 시작
-            lastEffectTime = currentTime
-            startEffectCooldown(effectType.cooldownMs)
+            // 만료 타이머 시작
+            startBubbleEffectExpiryTimer(effectType.durationMs)
         }
     }
 
-    private fun startEffectCooldown(cooldownMs: Long) {
-        effectCooldownJob?.cancel()
-        effectCooldownJob = viewModelScope.launch {
-            var remaining = cooldownMs
-            while (remaining > 0) {
-                _uiState.update { it.copy(effectCooldownRemaining = remaining) }
-                delay(1000)
-                remaining -= 1000
+    /**
+     * 버블 이펙트 비활성화
+     */
+    fun deactivateBubbleEffect() {
+        bubbleEffectExpiryJob?.cancel()
+
+        viewModelScope.launch {
+            val state = _uiState.value
+            chatRepository.deactivateBubbleEffect(state.userId)
+
+            _uiState.update {
+                it.copy(
+                    myBubbleEffect = null,
+                    myBubbleEffectExpiry = 0L
+                )
             }
-            _uiState.update { it.copy(effectCooldownRemaining = 0L) }
         }
     }
 
-    fun onEffectReceived(effectId: String, senderNickname: String) {
-        val effectType = RankEffect.EffectType.fromId(effectId) ?: return
-
-        _uiState.update {
-            it.copy(
-                currentEffect = effectType,
-                currentEffectSender = senderNickname
-            )
+    private fun startBubbleEffectExpiryTimer(durationMs: Long) {
+        bubbleEffectExpiryJob?.cancel()
+        bubbleEffectExpiryJob = viewModelScope.launch {
+            delay(durationMs)
+            // 이펙트 만료
+            _uiState.update {
+                it.copy(
+                    myBubbleEffect = null,
+                    myBubbleEffectExpiry = 0L
+                )
+            }
         }
     }
 
-    fun onEffectComplete() {
-        _uiState.update {
-            it.copy(
-                currentEffect = null,
-                currentEffectSender = ""
-            )
-        }
+    /**
+     * 사용자의 버블 이펙트 타입 가져오기 (메시지 렌더링용)
+     * onlineUsers에서 해당 userId의 버블 이펙트 정보를 조회
+     */
+    fun getBubbleEffectForUser(userId: String): RankEffect.EffectType? {
+        val user = _uiState.value.onlineUsers.find { it.userId == userId }
+        return user?.activeBubbleEffect
     }
 
     fun setReplyingTo(message: ChatMessage) {
@@ -1066,7 +1040,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             messageObserverJob?.cancel()
             onlineUsersObserverJob?.cancel()
             joinLeaveIndicatorJob?.cancel()
-            stopEffectObservation()
+            bubbleEffectExpiryJob?.cancel()
 
             // 백그라운드 서비스 종료 (정상 종료이므로 퇴장 메시지 없음)
             stopBackgroundServiceGracefully()

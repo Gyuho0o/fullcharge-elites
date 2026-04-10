@@ -1,60 +1,101 @@
 package com.elites.fullcharge.data
 
 /**
- * 계급별 사용 가능한 이펙트 정의
+ * 계급별 사용 가능한 말풍선 이펙트 정의
  *
- * - 부사관(하사~원사): 부사관 이펙트 4개
- * - 장교(소위~대장): 부사관 + 장교 이펙트 4개
+ * - 부사관(하사~원사): 부사관 이펙트 5개 (3분 지속)
+ * - 장교(소위~대장): 부사관 + 장교 이펙트 5개 (5분 지속)
+ *
+ * 이펙트 활성화 시 해당 사용자의 모든 말풍선에 효과가 적용됨
  */
 object RankEffect {
 
     /**
-     * 이펙트 타입
+     * 말풍선 이펙트 타입
      */
     enum class EffectType(
         val id: String,
         val displayName: String,
         val emoji: String,
         val durationMs: Long,
-        val cooldownMs: Long
+        val cooldownMs: Long,
+        val description: String
     ) {
-        // 부사관 이펙트 (1.5~2초) - TODO: 테스트 후 쿨다운 복원 (30_000L, 60_000L)
-        CHARGE("charge", "충전", "🔋", 2000L, 0L),
-        BULB("bulb", "전구", "💡", 1800L, 0L),
-        PLUG("plug", "플러그", "🔌", 1500L, 0L),
-        FULL_CHARGE("full_charge", "완충 선언", "👑", 2500L, 0L),
-        CURRENT("current", "전류", "⚡", 1800L, 0L),
-        POWER_SURGE("power_surge", "파워 서지", "🔆", 2000L, 0L),
+        // 부사관 이펙트 (3분 지속)
+        CHARGING(
+            "charging", "충전 중", "🔋",
+            3 * 60 * 1000L, 0L,
+            "말풍선에 충전 애니메이션"
+        ),
+        SPARK_BORDER(
+            "spark_border", "스파크", "⚡",
+            3 * 60 * 1000L, 0L,
+            "말풍선 테두리에 전기 스파크"
+        ),
+        GLOW_GREEN(
+            "glow_green", "그린 글로우", "💚",
+            3 * 60 * 1000L, 0L,
+            "말풍선에 초록색 발광 효과"
+        ),
+        PULSE(
+            "pulse", "맥동", "💓",
+            3 * 60 * 1000L, 0L,
+            "말풍선이 부드럽게 맥동"
+        ),
+        ELECTRIC(
+            "electric", "전류", "⚡",
+            3 * 60 * 1000L, 0L,
+            "말풍선에 전류가 흐르는 효과"
+        ),
 
-        // 장교 이펙트 (2.5~3.5초)
-        LIGHTNING_STORM("lightning_storm", "번개 폭풍", "🌩️", 3000L, 0L),
-        ENERGY_BURST("energy_burst", "에너지 버스트", "💥", 2500L, 0L),
-        DOUBLE_LIGHTNING("double_lightning", "더블 라이트닝", "⚡⚡", 2500L, 0L),
-        THUNDERBOLT("thunderbolt", "썬더볼트", "⛈️", 3000L, 0L),
-        OVERCHARGE("overcharge", "오버차지", "🌟", 3500L, 0L);
+        // 장교 이펙트 (5분 지속)
+        FULL_CHARGE(
+            "full_charge", "완충", "👑",
+            5 * 60 * 1000L, 0L,
+            "금색 왕관 + 완충 뱃지"
+        ),
+        GOLDEN_AURA(
+            "golden_aura", "황금 오라", "✨",
+            5 * 60 * 1000L, 0L,
+            "말풍선에 금색 오라 효과"
+        ),
+        FIRE_BORDER(
+            "fire_border", "파이어", "🔥",
+            5 * 60 * 1000L, 0L,
+            "말풍선 테두리에 불꽃"
+        ),
+        RAINBOW(
+            "rainbow", "레인보우", "🌈",
+            5 * 60 * 1000L, 0L,
+            "무지개 그라데이션 테두리"
+        ),
+        ELITE_GLOW(
+            "elite_glow", "엘리트", "🎖️",
+            5 * 60 * 1000L, 0L,
+            "엘리트 전용 특수 발광"
+        );
 
         companion object {
             fun fromId(id: String): EffectType? = entries.find { it.id == id }
         }
     }
 
-    // 부사관용 이펙트 (하사~원사) - 6개
+    // 부사관용 이펙트 (하사~원사) - 5개
     private val NCO_EFFECTS = listOf(
-        EffectType.CHARGE,
-        EffectType.BULB,
-        EffectType.PLUG,
-        EffectType.FULL_CHARGE,
-        EffectType.CURRENT,
-        EffectType.POWER_SURGE
+        EffectType.CHARGING,
+        EffectType.SPARK_BORDER,
+        EffectType.GLOW_GREEN,
+        EffectType.PULSE,
+        EffectType.ELECTRIC
     )
 
     // 장교용 이펙트 (소위~대장) - 5개
     private val OFFICER_EFFECTS = listOf(
-        EffectType.LIGHTNING_STORM,
-        EffectType.ENERGY_BURST,
-        EffectType.DOUBLE_LIGHTNING,
-        EffectType.THUNDERBOLT,
-        EffectType.OVERCHARGE
+        EffectType.FULL_CHARGE,
+        EffectType.GOLDEN_AURA,
+        EffectType.FIRE_BORDER,
+        EffectType.RAINBOW,
+        EffectType.ELITE_GLOW
     )
 
     /**
