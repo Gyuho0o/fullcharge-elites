@@ -182,7 +182,14 @@ fun GatekeeperScreen(
                 isCharging = isCharging,
                 batteryLevel = batteryLevel,
                 onlineUserCount = onlineUserCount,
-                onEnterPortal = onEnterPortal,
+                onEnterPortal = {
+                    // 복구 가능한 세션이 있으면 모달 표시, 없으면 바로 입장
+                    if (restorableSessionDuration != null) {
+                        showRestoreDialog = true
+                    } else {
+                        onEnterPortal()
+                    }
+                },
                 onEnterAsAdmin = onEnterAsAdmin,
                 onShowOnboarding = onShowOnboarding
             )
@@ -783,7 +790,7 @@ private fun RankRestoreDialog(
     }
 
     AlertDialog(
-        onDismissRequest = {},  // 바깥 터치로 닫히지 않음 - 명시적으로 버튼 선택 필요
+        onDismissRequest = onDismiss,  // 바깥 터치로 닫힘 - 전선 투입 시 다시 표시됨
         containerColor = CardBlack,
         shape = RoundedCornerShape(16.dp),
         title = {
