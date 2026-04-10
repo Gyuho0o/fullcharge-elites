@@ -980,8 +980,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             // 퇴장 알림은 플로팅 UI로 대체 (시스템 메시지 전송 없음)
 
-            // Firebase에서 퇴장 처리 (관리자였으면 세션 데이터 완전 초기화)
-            chatRepository.leaveChat(state.userId, wasAdmin = wasAdminMode)
+            // Firebase에서 퇴장 처리 (추방 시 세션 초기화하여 자동 복원 방지)
+            chatRepository.leaveChat(state.userId, wasAdmin = wasAdminMode, wasExiled = !wasAdminMode)
 
             // 세션 종료
             preferences.endSession()

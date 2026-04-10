@@ -527,19 +527,31 @@ class ChatRepository {
         disconnectMessageKey = null
     }
 
-    suspend fun leaveChat(userId: String, wasAdmin: Boolean = false) {
+    suspend fun leaveChat(userId: String, wasAdmin: Boolean = false, wasExiled: Boolean = false) {
         // 정상 종료 시 onDisconnect 핸들러 취소
         cancelDisconnectHandlers(userId)
 
-        if (wasAdmin) {
-            // 관리자 세션 종료 시 세션 데이터 완전 초기화 (일반 유저 접속 시 계급 유지 방지)
-            usersRef.child(userId).updateChildren(mapOf(
-                "isOnline" to false,
-                "isAdmin" to false,
-                "sessionStartTime" to 0L
-            )).await()
-        } else {
-            usersRef.child(userId).child("isOnline").setValue(false).await()
+        when {
+            wasAdmin -> {
+                // 관리자 세션 종료 시 세션 데이터 완전 초기화
+                usersRef.child(userId).updateChildren(mapOf(
+                    "isOnline" to false,
+                    "isAdmin" to false,
+                    "sessionStartTime" to 0L
+                )).await()
+            }
+            wasExiled -> {
+                // 추방 시 세션 데이터 초기화 (자동 복원 방지 - 광고 시청 후 복구 모달 필요)
+                usersRef.child(userId).updateChildren(mapOf(
+                    "isOnline" to false,
+                    "sessionStartTime" to 0L,
+                    "lastActiveTime" to 0L
+                )).await()
+            }
+            else -> {
+                // 자발적 퇴장: isOnline만 false (세션 유지하여 10분 내 복귀 시 계속)
+                usersRef.child(userId).child("isOnline").setValue(false).await()
+            }
         }
 
         // 사용자 정보 클리어
