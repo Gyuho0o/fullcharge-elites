@@ -3460,11 +3460,11 @@ private fun EmojiPickerSheet(
             when (selectedTab) {
                 0 -> {
                     // 이모지 탭 내용
-                    // 부사관 이모지 (ID: 1~12)
+                    // 부사관 이모지 (ID: 1~15)
                     EmojiSection(
                         title = "부사관 이모지",
                         titleColor = Color(0xFF3B82F6),
-                        emojis = allEmojis.filter { it.id in 1..12 },
+                        emojis = allEmojis.filter { it.id in 1..15 },
                         availableEmojis = availableEmojis,
                         onEmojiSelected = onEmojiSelected
                     )
