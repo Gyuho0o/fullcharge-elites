@@ -1,5 +1,6 @@
 package com.elites.fullcharge.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -1419,6 +1420,11 @@ private fun UserMessage(
     // 리액션 피커 표시 여부
     var showReactionPicker by remember { mutableStateOf(false) }
 
+    // 뒤로가기 시 리액션 피커 닫기
+    BackHandler(enabled = showReactionPicker) {
+        showReactionPicker = false
+    }
+
     // 차단 해제 확인 다이얼로그 표시 여부
     var showUnblockDialog by remember { mutableStateOf(false) }
 
@@ -1521,7 +1527,7 @@ private fun UserMessage(
                         else Modifier
                     )
                     .combinedClickable(
-                        onClick = { },
+                        onClick = { if (showReactionPicker) showReactionPicker = false },
                         onLongClick = { showReactionPicker = true }
                     )
                     .padding(12.dp)
@@ -1563,12 +1569,11 @@ private fun UserMessage(
             Row(
                 modifier = Modifier
                     .padding(top = 4.dp)
-                    .horizontalScroll(rememberScrollState())
                     .clip(RoundedCornerShape(20.dp))
                     .background(SurfaceBlack)
                     .border(1.dp, BorderMuted, RoundedCornerShape(20.dp))
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    .padding(horizontal = 6.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 customReactions.forEach { emoji ->
@@ -1585,12 +1590,12 @@ private fun UserMessage(
                                 onToggleReaction(message.id, emoji)
                                 showReactionPicker = false
                             }
-                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
                     ) {
                         Text(
                             text = emoji,
-                            fontSize = 13.sp,
-                            fontFamily = FontFamily.Serif,  // 궁서체 스타일
+                            fontSize = 12.sp,
+                            fontFamily = FontFamily.Serif,
                             fontWeight = FontWeight.Bold,
                             color = emojiColor,
                             maxLines = 1
@@ -1616,22 +1621,12 @@ private fun UserMessage(
                                 onBlockUser()
                                 showReactionPicker = false
                             }
-                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                            .padding(horizontal = 6.dp, vertical = 6.dp)
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = "🚨",
-                                fontSize = 12.sp
-                            )
-                            Spacer(modifier = Modifier.width(2.dp))
-                            Text(
-                                text = "신고",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = CrisisRed,
-                                maxLines = 1
-                            )
-                        }
+                        Text(
+                            text = "🚨",
+                            fontSize = 12.sp
+                        )
                     }
                 }
 
@@ -1640,7 +1635,7 @@ private fun UserMessage(
                     modifier = Modifier
                         .clip(RoundedCornerShape(12.dp))
                         .clickable { showReactionPicker = false }
-                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                        .padding(horizontal = 6.dp, vertical = 6.dp)
                 ) {
                     Text(
                         text = "✕",
