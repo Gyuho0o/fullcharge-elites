@@ -5,7 +5,7 @@ import com.elites.fullcharge.R
 /**
  * 계급별 사용 가능한 이모지 정의
  *
- * - 부사관(하사~원사): nco_01 ~ nco_10, nco_08_1, nco_08_2 (12개)
+ * - 부사관(하사~원사): nco_01 ~ nco_13, nco_08_1, nco_08_2 (15개)
  * - 위관급(소위~대위): co_01 ~ co_03 (3개)
  * - 영관급(소령~대령): 추후 추가
  * - 장성급(준장~대장): 휘장 시스템 (추후 구현)
@@ -21,7 +21,7 @@ object RankEmoji {
         val displayName: String
     )
 
-    // 부사관용 이모지 (하사~원사) - 12개
+    // 부사관용 이모지 (하사~원사) - 15개
     private val NCO_EMOJIS = listOf(
         EmojiItem(1, R.drawable.nco_01, "악!"),
         EmojiItem(2, R.drawable.nco_02, "깡!"),
@@ -34,7 +34,10 @@ object RankEmoji {
         EmojiItem(9, R.drawable.nco_08_1, "부사관 8-1"),
         EmojiItem(10, R.drawable.nco_08_2, "부사관 8-2"),
         EmojiItem(11, R.drawable.nco_09, "부사관 9"),
-        EmojiItem(12, R.drawable.nco_10, "부사관 10")
+        EmojiItem(12, R.drawable.nco_10, "부사관 10"),
+        EmojiItem(13, R.drawable.nco_11, "같!"),
+        EmojiItem(14, R.drawable.nco_12, "다!"),
+        EmojiItem(15, R.drawable.nco_13, "마!")
     )
 
     // 장교용 이모지 (소위 이상) - 3개
@@ -116,7 +119,7 @@ object RankEmoji {
      */
     fun getMinimumRankForEmoji(emojiId: Int): EliteRank {
         return when (emojiId) {
-            in 1..12 -> EliteRank.STAFF_SERGEANT  // 부사관용
+            in 1..15 -> EliteRank.STAFF_SERGEANT  // 부사관용
             in 101..103 -> EliteRank.SECOND_LIEUTENANT  // 위관급용
             in 201..300 -> EliteRank.MAJOR  // 영관급용 (추후)
             else -> EliteRank.GENERAL
