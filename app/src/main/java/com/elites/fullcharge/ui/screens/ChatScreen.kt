@@ -1791,10 +1791,10 @@ private fun MessageInputSection(
                         focusedContainerColor = MutedBlack,
                         unfocusedContainerColor = MutedBlack
                     ),
-                    shape = RoundedCornerShape(8.dp),  // v0 uses default input shape
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(onSend = { onSend() })
+                    shape = RoundedCornerShape(8.dp),
+                    singleLine = false,
+                    maxLines = 4,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default)
                 )
 
                 // Send Button (v0: Button size="icon" bg-primary)
