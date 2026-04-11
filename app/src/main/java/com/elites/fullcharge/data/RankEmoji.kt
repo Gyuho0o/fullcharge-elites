@@ -6,7 +6,7 @@ import com.elites.fullcharge.R
  * 계급별 이모지 시스템
  *
  * - 부사관 이모지 (15개): 하사 이상 사용 가능
- * - 장교 이모지 (9개): 소위 이상 사용 가능
+ * - 장교 이모지 (5개): 소위 이상 사용 가능
  */
 object RankEmoji {
 
@@ -38,17 +38,13 @@ object RankEmoji {
         EmojiItem(115, R.drawable.nco_15, "부사관 15")
     )
 
-    // 장교 이모지 - 소위 이상 전용 (9개)
+    // 장교 이모지 - 소위 이상 전용 (5개)
     private val OFFICER_EMOJIS = listOf(
-        EmojiItem(201, R.drawable.officer_01, "충전!"),
-        EmojiItem(202, R.drawable.officer_02, "방전..."),
+        EmojiItem(201, R.drawable.officer_01, "장교 1"),
+        EmojiItem(202, R.drawable.officer_02, "장교 2"),
         EmojiItem(203, R.drawable.officer_03, "장교 3"),
         EmojiItem(204, R.drawable.officer_04, "장교 4"),
-        EmojiItem(205, R.drawable.officer_05, "장교 5"),
-        EmojiItem(206, R.drawable.officer_06, "장교 6"),
-        EmojiItem(207, R.drawable.officer_07, "장교 7"),
-        EmojiItem(208, R.drawable.officer_08, "아 안돼!"),
-        EmojiItem(209, R.drawable.officer_09, "장교 9")
+        EmojiItem(205, R.drawable.officer_05, "장교 5")
     )
 
     /**

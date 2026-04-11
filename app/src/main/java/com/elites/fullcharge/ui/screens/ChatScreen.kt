@@ -3589,7 +3589,7 @@ private fun EmojiButton(
 ) {
     Box(
         modifier = Modifier
-            .size(56.dp)
+            .size(72.dp)  // 56dp -> 72dp로 크기 증가
             .clip(RoundedCornerShape(12.dp))
             .background(
                 if (isAvailable) MutedBlack
@@ -3604,8 +3604,9 @@ private fun EmojiButton(
         androidx.compose.foundation.Image(
             painter = androidx.compose.ui.res.painterResource(id = emoji.drawableResId),
             contentDescription = emoji.displayName,
+            contentScale = androidx.compose.ui.layout.ContentScale.Fit,  // 1:1 비율 유지
             modifier = Modifier
-                .size(40.dp)
+                .size(56.dp)  // 40dp -> 56dp로 크기 증가
                 .graphicsLayer {
                     alpha = if (isAvailable) 1f else 0.3f
                 }
@@ -3688,21 +3689,13 @@ private fun MessageTextWithEmoji(
                 is MessagePart.EmojiPart -> {
                     val drawableResId = RankEmoji.getEmojiDrawableResId(part.emojiId)
                     if (drawableResId != null) {
-                        // 부사관: 48dp, 장교: 768dp (원본 비율)
-                        val isOfficerEmoji = part.emojiId in 101..300
-                        val emojiWidth = when (part.emojiId) {
-                            in 101..199 -> 768.dp  // 장교 (원본 비율)
-                            in 201..300 -> 960.dp  // 영관급 (원본 비율, 장교보다 큼)
-                            else -> 48.dp          // 부사관
-                        }
+                        // 모든 이모지 1:1 비율, 64dp 크기
+                        val emojiSize = 64.dp
 
                         Box(
                             modifier = Modifier
                                 .padding(horizontal = 2.dp)
-                                .then(
-                                    if (isOfficerEmoji) Modifier.wrapContentSize()
-                                    else Modifier.size(emojiWidth + 4.dp)
-                                )
+                                .size(emojiSize + 8.dp)
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(
                                     if (isMine) Color.Black.copy(alpha = 0.3f)
@@ -3713,14 +3706,8 @@ private fun MessageTextWithEmoji(
                             androidx.compose.foundation.Image(
                                 painter = androidx.compose.ui.res.painterResource(id = drawableResId),
                                 contentDescription = "이모지",
-                                contentScale = if (isOfficerEmoji)
-                                    androidx.compose.ui.layout.ContentScale.Fit
-                                else
-                                    androidx.compose.ui.layout.ContentScale.Crop,
-                                modifier = if (isOfficerEmoji)
-                                    Modifier.width(emojiWidth)
-                                else
-                                    Modifier.size(emojiWidth)
+                                contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+                                modifier = Modifier.size(emojiSize)
                             )
                         }
                     }

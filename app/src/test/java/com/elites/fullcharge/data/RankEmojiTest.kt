@@ -7,7 +7,7 @@ import org.junit.Test
  * RankEmoji 이모지 시스템 테스트
  *
  * - 부사관 이모지 (15개): 하사 이상 사용 가능
- * - 장교 이모지 (9개): 소위 이상 사용 가능
+ * - 장교 이모지 (5개): 소위 이상 사용 가능
  */
 class RankEmojiTest {
 
@@ -48,7 +48,7 @@ class RankEmojiTest {
     @Test
     fun `장교는 부사관 + 장교 이모지 사용 가능`() {
         val emojis = RankEmoji.getAvailableEmojis(EliteRank.CAPTAIN)
-        assertEquals(24, emojis.size)
+        assertEquals(20, emojis.size)  // 15 NCO + 5 Officer
         assertTrue(emojis.any { it.id in 101..200 })
         assertTrue(emojis.any { it.id in 201..300 })
     }
@@ -73,7 +73,7 @@ class RankEmojiTest {
         assertTrue(RankEmoji.canUseEmojiId(EliteRank.CAPTAIN, 101))
         assertTrue(RankEmoji.canUseEmojiId(EliteRank.CAPTAIN, 115))
         assertTrue(RankEmoji.canUseEmojiId(EliteRank.CAPTAIN, 201))
-        assertTrue(RankEmoji.canUseEmojiId(EliteRank.CAPTAIN, 209))
+        assertTrue(RankEmoji.canUseEmojiId(EliteRank.CAPTAIN, 205))
     }
 
     // ========== getMinimumRankForEmoji 테스트 ==========
@@ -87,7 +87,7 @@ class RankEmojiTest {
     @Test
     fun `장교 이모지는 소위 이상 필요`() {
         assertEquals(EliteRank.SECOND_LIEUTENANT, RankEmoji.getMinimumRankForEmoji(201))
-        assertEquals(EliteRank.SECOND_LIEUTENANT, RankEmoji.getMinimumRankForEmoji(209))
+        assertEquals(EliteRank.SECOND_LIEUTENANT, RankEmoji.getMinimumRankForEmoji(205))
     }
 
     // ========== filterUnauthorizedEmojis 테스트 ==========
@@ -116,12 +116,12 @@ class RankEmojiTest {
     // ========== getAllEmojis 테스트 ==========
 
     @Test
-    fun `getAllEmojis는 24개의 이모지 반환`() {
+    fun `getAllEmojis는 20개의 이모지 반환`() {
         val allEmojis = RankEmoji.getAllEmojis()
-        assertEquals(24, allEmojis.size)
-        // 15개 부사관 + 9개 장교
+        assertEquals(20, allEmojis.size)
+        // 15개 부사관 + 5개 장교
         assertEquals(15, allEmojis.count { it.id in 101..200 })
-        assertEquals(9, allEmojis.count { it.id in 201..300 })
+        assertEquals(5, allEmojis.count { it.id in 201..300 })
     }
 
     // ========== getEmojiDrawableResId 테스트 ==========
@@ -131,7 +131,7 @@ class RankEmojiTest {
         assertNotNull(RankEmoji.getEmojiDrawableResId(101))
         assertNotNull(RankEmoji.getEmojiDrawableResId(115))
         assertNotNull(RankEmoji.getEmojiDrawableResId(201))
-        assertNotNull(RankEmoji.getEmojiDrawableResId(209))
+        assertNotNull(RankEmoji.getEmojiDrawableResId(205))
     }
 
     @Test
