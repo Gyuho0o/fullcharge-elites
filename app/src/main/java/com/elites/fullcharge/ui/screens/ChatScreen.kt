@@ -3502,45 +3502,30 @@ private fun EmojiPickerSheet(
                 .padding(horizontal = 16.dp)
                 .padding(bottom = 32.dp)
         ) {
-            // 공통 이모지 (ID: 1~8) - 모든 계급
-            val commonEmojis = allEmojis.filter { it.id in 1..100 }
+            // 부사관 이모지 (ID: 101~115) - 하사 이상
+            val ncoEmojis = allEmojis.filter { it.id in 101..200 }
             EmojiSection(
-                title = "공통",
-                titleColor = Color(0xFF6B7280),
-                emojis = commonEmojis,
+                title = "부사관 전용",
+                titleColor = Color(0xFF10B981),
+                emojis = ncoEmojis,
                 availableEmojis = availableEmojis,
-                onEmojiSelected = onEmojiSelected
+                onEmojiSelected = onEmojiSelected,
+                lockedMessage = if (currentRank.ordinal < EliteRank.STAFF_SERGEANT.ordinal)
+                    "하사 이상 사용 가능" else null
             )
             Spacer(modifier = Modifier.height(16.dp))
 
-            // 부사관 이모지 (ID: 101~108) - 하사 이상
-            val ncoEmojis = allEmojis.filter { it.id in 101..200 }
-            if (ncoEmojis.isNotEmpty()) {
-                EmojiSection(
-                    title = "부사관 전용",
-                    titleColor = Color(0xFF10B981),
-                    emojis = ncoEmojis,
-                    availableEmojis = availableEmojis,
-                    onEmojiSelected = onEmojiSelected,
-                    lockedMessage = if (currentRank.ordinal < EliteRank.STAFF_SERGEANT.ordinal)
-                        "하사 이상 사용 가능" else null
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-            }
-
-            // 장교 이모지 (ID: 201~208) - 소위 이상
+            // 장교 이모지 (ID: 201~209) - 소위 이상
             val officerEmojis = allEmojis.filter { it.id in 201..300 }
-            if (officerEmojis.isNotEmpty()) {
-                EmojiSection(
-                    title = "장교 전용",
-                    titleColor = Color(0xFF8B5CF6),
-                    emojis = officerEmojis,
-                    availableEmojis = availableEmojis,
-                    onEmojiSelected = onEmojiSelected,
-                    lockedMessage = if (currentRank.ordinal < EliteRank.SECOND_LIEUTENANT.ordinal)
-                        "소위 이상 사용 가능" else null
-                )
-            }
+            EmojiSection(
+                title = "장교 전용",
+                titleColor = Color(0xFF8B5CF6),
+                emojis = officerEmojis,
+                availableEmojis = availableEmojis,
+                onEmojiSelected = onEmojiSelected,
+                lockedMessage = if (currentRank.ordinal < EliteRank.SECOND_LIEUTENANT.ordinal)
+                    "소위 이상 사용 가능" else null
+            )
         }
     }
 }
