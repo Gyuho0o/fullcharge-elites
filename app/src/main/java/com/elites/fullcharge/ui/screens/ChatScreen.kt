@@ -3693,37 +3693,27 @@ private fun MessageTextWithEmoji(
                     val drawableResId = RankEmoji.getEmojiDrawableResId(part.emojiId)
                     if (drawableResId != null) {
                         val isOfficerEmoji = part.emojiId in 201..300
+                        // 부사관: 44dp (3개 1줄), 장교: 120dp (통일)
+                        val emojiSize = if (isOfficerEmoji) 120.dp else 44.dp
+                        val boxSize = if (isOfficerEmoji) 128.dp else 52.dp
 
-                        if (isOfficerEmoji) {
-                            // 장교 이모지: 원본 크기 (최대 너비 제한)
+                        Box(
+                            modifier = Modifier
+                                .padding(horizontal = 2.dp)
+                                .size(boxSize)
+                                .clip(RoundedCornerShape(if (isOfficerEmoji) 12.dp else 6.dp))
+                                .background(
+                                    if (isMine) Color.Black.copy(alpha = 0.2f)
+                                    else Color.Transparent
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
                             androidx.compose.foundation.Image(
                                 painter = androidx.compose.ui.res.painterResource(id = drawableResId),
                                 contentDescription = "이모지",
                                 contentScale = androidx.compose.ui.layout.ContentScale.Fit,
-                                modifier = Modifier
-                                    .widthIn(max = 240.dp)
-                                    .padding(vertical = 4.dp)
+                                modifier = Modifier.size(emojiSize)
                             )
-                        } else {
-                            // 부사관 이모지: 48dp (3개가 1줄에 나오는 크기)
-                            Box(
-                                modifier = Modifier
-                                    .padding(horizontal = 2.dp)
-                                    .size(52.dp)
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(
-                                        if (isMine) Color.Black.copy(alpha = 0.2f)
-                                        else Color.Transparent
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                androidx.compose.foundation.Image(
-                                    painter = androidx.compose.ui.res.painterResource(id = drawableResId),
-                                    contentDescription = "이모지",
-                                    contentScale = androidx.compose.ui.layout.ContentScale.Fit,
-                                    modifier = Modifier.size(44.dp)
-                                )
-                            }
                         }
                     }
                 }
