@@ -14,16 +14,24 @@ exports.sendChatNotification = functions
   .database.ref("/messages/{messageId}")
   .onCreate(async (snapshot, context) => {
     const message = snapshot.val();
+    const messageText = message.message || "";
 
-    // 시스템 메시지는 알림 안 함
+    // 시스템 메시지 처리
     if (message.isSystemMessage) {
-      console.log("Skipping notification for system message");
-      return null;
+      // 중요한 시스템 메시지는 알림 발송 (합류, 배신)
+      const isImportantSystemMessage =
+        messageText.includes("합류했습니다") ||
+        messageText.includes("배신했습니다");
+
+      if (!isImportantSystemMessage) {
+        console.log("Skipping notification for non-important system message");
+        return null;
+      }
+      console.log("Sending notification for important system message");
     }
 
     const senderId = message.userId;
     const senderNickname = message.nickname;
-    const messageText = message.message;
 
     // 모든 FCM 토큰 가져오기
     const tokensSnapshot = await db.ref("/fcm_tokens").once("value");
@@ -56,15 +64,24 @@ exports.sendChatNotification = functions
       ? messageText.substring(0, 100) + "..."
       : messageText;
 
+    // 시스템 메시지용 제목/본문 생성
+    let notificationTitle = senderNickname;
+    let notificationBody = truncatedMessage;
+
+    if (message.isSystemMessage) {
+      notificationTitle = "완충 전우회";
+      notificationBody = truncatedMessage;
+    }
+
     // 푸시 알림 페이로드
     const payload = {
       notification: {
-        title: `${senderNickname}`,
-        body: truncatedMessage,
+        title: notificationTitle,
+        body: notificationBody,
       },
       data: {
-        title: senderNickname,
-        body: truncatedMessage,
+        title: notificationTitle,
+        body: notificationBody,
         senderNickname: senderNickname,
         senderId: senderId,
         messageId: context.params.messageId,
