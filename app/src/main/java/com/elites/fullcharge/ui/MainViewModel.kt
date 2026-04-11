@@ -612,8 +612,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         sessionStartTimeObserverJob?.cancel()
         sessionStartTimeObserverJob = viewModelScope.launch {
             val state = _uiState.value
+            var isFirstEmission = true
+
             chatRepository.observeUserSessionStartTime(state.userId).collect { newSessionStartTime ->
                 val currentStartTime = _uiState.value.sessionStartTime
+
+                // 첫 번째 이벤트는 무시 (입장 직후 Firebase 동기화 지연으로 인한 오래된 데이터 방지)
+                if (isFirstEmission) {
+                    isFirstEmission = false
+                    return@collect
+                }
+
                 // sessionStartTime이 변경되었고, 유효한 값인 경우에만 업데이트
                 if (newSessionStartTime > 0 && newSessionStartTime != currentStartTime) {
                     _uiState.update { it.copy(sessionStartTime = newSessionStartTime) }
