@@ -1323,7 +1323,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private const val RATE_LIMIT_WINDOW_MS = 10000L
         private const val RATE_LIMIT_MAX_MESSAGES = 5
         // 관리자 비밀번호 (실제 운영에서는 더 안전한 방법 권장)
-        private const val ADMIN_PASSWORD = "3636"
+        private const val ADMIN_PASSWORD = "4848"
         private const val ADMIN_NICKNAME = "전우회장"
     }
 
