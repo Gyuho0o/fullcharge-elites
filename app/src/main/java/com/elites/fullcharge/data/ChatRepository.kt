@@ -50,6 +50,7 @@ class ChatRepository {
                         val timestamp = child.child("timestamp").getValue(Long::class.java) ?: 0L
                         val rank = child.child("rank").getValue(String::class.java) ?: EliteRank.TRAINEE.name
                         val isSystemMessage = child.child("isSystemMessage").getValue(Boolean::class.java) ?: false
+                        val effectId = child.child("effectId").getValue(String::class.java)
 
                         // readBy
                         val readBy = child.child("readBy").children
@@ -99,6 +100,7 @@ class ChatRepository {
                             rank = rank,
                             isSystemMessage = isSystemMessage,
                             readBy = readBy,
+                            effectId = effectId,
                             replyToId = replyToId,
                             replyToNickname = replyToNickname,
                             replyToMessage = replyToMessage,

@@ -40,14 +40,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.elites.fullcharge.data.*
 import com.elites.fullcharge.ui.components.ChargingParticles
+import com.elites.fullcharge.ui.components.FullScreenTypingLightning
 import com.elites.fullcharge.ui.components.JoinLeaveIndicator
 import com.elites.fullcharge.ui.components.RankInsignia
-import com.elites.fullcharge.ui.components.ArrivalShockwaveEffect
-import com.elites.fullcharge.ui.components.AuthorityPulseEffect
-import com.elites.fullcharge.ui.components.EntranceTakeoverOverlay
-import com.elites.fullcharge.ui.components.SendBurstEffect
 import com.elites.fullcharge.ui.components.TypingSparkEffect
-import com.elites.fullcharge.ui.components.lightningBorder
+import com.elites.fullcharge.ui.hapticFeedback
 import com.elites.fullcharge.ui.theme.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -130,13 +127,13 @@ fun ChatScreen(
     val isFullCharge = batteryLevel == 100
     val isCrisis = isInDanger
 
-    // 이전 메시지 수 추적
-    var previousMessageCount by remember { mutableIntStateOf(0) }
+    // 이전 메시지 수 추적 (자동 스크롤용)
+    var previousMessageCount by remember { mutableStateOf(0) }
 
-    // 새 메시지 자동 스크롤 (사용자가 맨 아래 근처에 있을 때만)
-    LaunchedEffect(messages.size) {
+    // 새 메시지 도착 시 자동 스크롤
+    LaunchedEffect(messages.size, messages.lastOrNull()?.id) {
         if (messages.isNotEmpty() && messages.size > previousMessageCount) {
-            // 새 메시지가 추가된 경우에만
+            // 자동 스크롤
             val lastVisibleIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
             val isNearBottom = lastVisibleIndex >= messages.size - 3
 
@@ -187,17 +184,6 @@ fun ChatScreen(
         }
     }
 
-    // 장교 입장 이펙트 (EntranceTakeoverOverlay)
-    if (latestChatEvent is ChatEvent.OfficerEntered) {
-        val officerEvent = latestChatEvent as ChatEvent.OfficerEntered
-        EntranceTakeoverOverlay(
-            visible = true,
-            officerNickname = officerEvent.nickname,
-            officerRank = officerEvent.rank.koreanName,
-            onDismiss = onDismissChatEvent
-        )
-    }
-
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -206,6 +192,24 @@ fun ChatScreen(
         // 배경 파티클 효과 (충전 중일 때만)
         if (batteryState.isCharging) {
             ChargingParticles()
+        }
+
+        // ===== 부사관/장교 타이핑 번개 이펙트 =====
+        // 부사관(하사~원사): 초록색, 장교(소위~대장): 파란색
+        val isNcoRank = RankEffect.canUseNcoEffects(currentRank)
+        val isOfficerRank = RankEffect.canUseOfficerEffects(currentRank)
+        val isTyping = messageInput.isNotBlank()
+
+        if (isTyping && (isNcoRank || isOfficerRank)) {
+            val lightningColor = if (isOfficerRank) {
+                Color(0xFF00BFFF)  // 장교: 파란색
+            } else {
+                EliteGreen  // 부사관: 초록색
+            }
+            FullScreenTypingLightning(
+                isTyping = true,
+                lightningColor = lightningColor
+            )
         }
 
         // ===== MAIN CONTENT =====
@@ -1411,24 +1415,6 @@ private fun UserMessage(
         EliteRank.TRAINEE
     }
 
-    // 부사관 번개 테두리 이펙트 (내 메시지만)
-    val isNcoRank = RankEffect.isNcoRank(rank)
-
-    // 장교 이펙트 (타인의 장교 메시지만)
-    val isOfficerRank = RankEffect.isOfficerRank(rank)
-    val showOfficerEffects = isOfficerRank && !isMine
-
-    // 도착 충격파 트리거 (메시지 최초 표시 시 한 번만)
-    var hasShownShockwave by remember { mutableStateOf(false) }
-    var triggerShockwave by remember { mutableStateOf(false) }
-
-    LaunchedEffect(showOfficerEffects) {
-        if (showOfficerEffects && !hasShownShockwave) {
-            triggerShockwave = true
-            hasShownShockwave = true
-        }
-    }
-
     val bubbleShape = RoundedCornerShape(
         topStart = if (isMine) 16.dp else 4.dp,
         topEnd = if (isMine) 4.dp else 16.dp,
@@ -1534,56 +1520,30 @@ private fun UserMessage(
                 )
             }
 
-            // Message Bubble with long press + Officer Effects
-            Box(modifier = Modifier.wrapContentWidth()) {
-                // 장교 메시지: 권위 펄스 효과 (배경)
-                if (showOfficerEffects) {
-                    AuthorityPulseEffect(
-                        enabled = true,
-                        modifier = Modifier.matchParentSize()
+            // Message Bubble (이펙트는 전체 화면에서 처리)
+            Box(
+                modifier = Modifier
+                    .widthIn(max = 240.dp)
+                    .clip(bubbleShape)
+                    .background(if (isMine) EliteGreen else CardBlack)
+                    .then(
+                        // 타인 메시지: 기본 테두리
+                        if (!isMine) Modifier.border(1.dp, EliteGreen.copy(alpha = 0.2f), bubbleShape)
+                        else Modifier
                     )
-                }
-
-                // Message Bubble
-                Box(
-                    modifier = Modifier
-                        .widthIn(max = 240.dp)
-                        .clip(bubbleShape)
-                        .background(if (isMine) EliteGreen else CardBlack)
-                        .then(
-                            when {
-                                // 부사관 내 메시지: 번개 테두리
-                                isMine && isNcoRank -> Modifier.lightningBorder(enabled = true)
-                                // 장교 타인 메시지: 금색 테두리
-                                showOfficerEffects -> Modifier.border(1.5.dp, Color(0xFFFFD700).copy(alpha = 0.6f), bubbleShape)
-                                // 타인 메시지: 기본 테두리
-                                !isMine -> Modifier.border(1.dp, EliteGreen.copy(alpha = 0.2f), bubbleShape)
-                                else -> Modifier
-                            }
-                        )
-                        .combinedClickable(
-                            onClick = { if (showReactionPicker) showReactionPicker = false },
-                            onLongClick = { showReactionPicker = true }
-                        )
-                        .padding(12.dp)
-                ) {
-                    MessageTextWithEmoji(
-                        text = message.message,
-                        fontSize = 14.sp,
-                        lineHeight = 22.sp,
-                        color = if (isMine) BackgroundBlack else ForegroundWhite,
-                        isMine = isMine
+                    .combinedClickable(
+                        onClick = { if (showReactionPicker) showReactionPicker = false },
+                        onLongClick = { showReactionPicker = true }
                     )
-                }
-
-                // 장교 메시지: 도착 충격파 효과
-                if (triggerShockwave) {
-                    ArrivalShockwaveEffect(
-                        trigger = true,
-                        onComplete = { triggerShockwave = false },
-                        modifier = Modifier.matchParentSize()
-                    )
-                }
+                    .padding(12.dp)
+            ) {
+                MessageTextWithEmoji(
+                    text = message.message,
+                    fontSize = 14.sp,
+                    lineHeight = 22.sp,
+                    color = if (isMine) BackgroundBlack else ForegroundWhite,
+                    isMine = isMine
+                )
             }
 
             // 타인 메시지: 리액션이 오른쪽에
@@ -1771,13 +1731,24 @@ private fun MessageInputSection(
     onEmojiClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val hasText = value.isNotBlank()
 
-    // 부사관 이상 이펙트 활성화 여부
-    val isNcoRank = RankEffect.canUseNcoEffects(currentRank)
+    // 부사관/장교 계급 여부 (햅틱 피드백용)
+    val isNcoOrOfficer = RankEffect.canUseNcoEffects(currentRank)
 
-    // 전송 버스트 이펙트 트리거
-    var showSendBurst by remember { mutableStateOf(false) }
+    // 이전 텍스트 길이 추적 (새 글자 입력 감지용)
+    var previousLength by remember { mutableStateOf(0) }
+
+    // 값이 바뀔 때 햅틱 피드백 처리
+    val wrappedOnValueChange: (String) -> Unit = { newValue ->
+        // 글자가 추가됐을 때만 햅틱 (삭제 시에는 안 함)
+        if (isNcoOrOfficer && newValue.length > previousLength) {
+            context.hapticFeedback()
+        }
+        previousLength = newValue.length
+        onValueChange(newValue)
+    }
 
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -1800,7 +1771,7 @@ private fun MessageInputSection(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)  // v0: gap-2
             ) {
-                // Emoji Button
+                // Emoji 버튼
                 Box(
                     modifier = Modifier
                         .size(48.dp)
@@ -1820,7 +1791,7 @@ private fun MessageInputSection(
                 Box(modifier = Modifier.weight(1f)) {
                     OutlinedTextField(
                         value = value,
-                        onValueChange = onValueChange,
+                        onValueChange = wrappedOnValueChange,
                         modifier = Modifier.fillMaxWidth(),
                         placeholder = {
                             Text(
@@ -1830,9 +1801,9 @@ private fun MessageInputSection(
                             )
                         },
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = if (isNcoRank) Color(0xFF00BFFF) else EliteGreen,
-                            unfocusedBorderColor = if (isNcoRank) Color(0xFF00BFFF).copy(alpha = 0.5f) else BorderMuted.copy(alpha = 0.5f),
-                            cursorColor = if (isNcoRank) Color(0xFF00BFFF) else EliteGreen,
+                            focusedBorderColor = EliteGreen,
+                            unfocusedBorderColor = BorderMuted.copy(alpha = 0.5f),
+                            cursorColor = EliteGreen,
                             focusedTextColor = ForegroundWhite,
                             unfocusedTextColor = ForegroundWhite,
                             focusedContainerColor = MutedBlack,
@@ -1844,8 +1815,8 @@ private fun MessageInputSection(
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default)
                     )
 
-                    // 부사관 이상: 타이핑 스파크 이펙트 (레이아웃에 영향 없이 오버레이)
-                    if (isNcoRank && hasText) {
+                    // 타이핑 스파크 이펙트 (모든 계급 상시 활성화)
+                    if (hasText) {
                         Box(
                             modifier = Modifier
                                 .matchParentSize()  // 레이아웃에 영향 없이 부모 크기만큼
@@ -1860,38 +1831,19 @@ private fun MessageInputSection(
                 }
 
                 // Send Button (v0: Button size="icon" bg-primary)
-                Box {
-                    IconButton(
-                        onClick = {
-                            if (isNcoRank && hasText) {
-                                showSendBurst = true
-                            }
-                            onSend()
-                        },
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(EliteGreen)  // v0: bg-primary always
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Send,
-                            contentDescription = "전송",
-                            tint = BackgroundBlack,  // v0: text-primary-foreground
-                            modifier = Modifier.size(16.dp)  // v0: w-4 h-4
-                        )
-                    }
-
-                    // 부사관: 전송 버스트 이펙트
-                    if (showSendBurst) {
-                        SendBurstEffect(
-                            trigger = true,
-                            onComplete = { showSendBurst = false },
-                            modifier = Modifier
-                                .size(100.dp)
-                                .align(Alignment.Center)
-                                .offset(x = (-26).dp, y = 0.dp)
-                        )
-                    }
+                IconButton(
+                    onClick = { onSend() },
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(EliteGreen)  // v0: bg-primary always
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Send,
+                        contentDescription = "전송",
+                        tint = BackgroundBlack,  // v0: text-primary-foreground
+                        modifier = Modifier.size(16.dp)  // v0: w-4 h-4
+                    )
                 }
             }
 
@@ -2148,7 +2100,7 @@ private fun RankUpDialog(
     bannerAdContent: @Composable () -> Unit,
     onDismiss: () -> Unit
 ) {
-    var countdown by remember { mutableIntStateOf(10) }
+    var countdown by remember { mutableStateOf(10) }
 
     // 10초 카운트다운 후 자동 닫기
     LaunchedEffect(Unit) {
@@ -3456,7 +3408,7 @@ private fun getTimeAgo(timestamp: Long): String {
 }
 
 // ===== EMOJI PICKER BOTTOM SHEET =====
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 private fun EmojiPickerSheet(
     currentRank: EliteRank,
@@ -3484,15 +3436,14 @@ private fun EmojiPickerSheet(
                         .clip(RoundedCornerShape(2.dp))
                         .background(ForegroundMuted)
                 )
-                Spacer(modifier = Modifier.height(16.dp))
-
+                Spacer(modifier = Modifier.height(12.dp))
                 Text(
-                    text = "이모지",
+                    text = "😊 이모지",
                     fontSize = 16.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = ForegroundWhite
                 )
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(12.dp))
             }
         }
     ) {
@@ -3502,7 +3453,6 @@ private fun EmojiPickerSheet(
                 .padding(horizontal = 16.dp)
                 .padding(bottom = 32.dp)
         ) {
-            // 부사관 이모지 (ID: 101~115) - 하사 이상
             val ncoEmojis = allEmojis.filter { it.id in 101..200 }
             EmojiSection(
                 title = "부사관 전용",
@@ -3515,7 +3465,6 @@ private fun EmojiPickerSheet(
             )
             Spacer(modifier = Modifier.height(16.dp))
 
-            // 장교 이모지 (ID: 201~209) - 소위 이상
             val officerEmojis = allEmojis.filter { it.id in 201..300 }
             EmojiSection(
                 title = "장교 전용",

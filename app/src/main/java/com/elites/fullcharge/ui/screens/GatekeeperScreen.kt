@@ -67,8 +67,8 @@ fun GatekeeperScreen(
     val isCharging = batteryState.isCharging
     val batteryLevel = batteryState.level
 
-    var secretTapCount by remember { mutableIntStateOf(0) }
-    var lastTapTime by remember { mutableLongStateOf(0L) }
+    var secretTapCount by remember { mutableStateOf(0) }
+    var lastTapTime by remember { mutableStateOf(0L) }
     var showRestoreDialog by remember { mutableStateOf(false) }
 
     if (showAdminLoginDialog) {

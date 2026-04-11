@@ -9,6 +9,8 @@ data class ChatMessage(
     val rank: String = EliteRank.TRAINEE.name,
     val isSystemMessage: Boolean = false,
     val readBy: List<String> = emptyList(),  // 읽은 사용자 ID 목록
+    // 적용된 이펙트 ID
+    val effectId: String? = null,
     // 답장 관련 필드
     val replyToId: String? = null,           // 답장 대상 메시지 ID
     val replyToNickname: String? = null,     // 답장 대상 닉네임
@@ -27,7 +29,7 @@ data class ChatMessage(
     val warning: String? = null
 ) {
     // Firebase를 위한 빈 생성자
-    constructor() : this("", "", "", "", 0L, EliteRank.TRAINEE.name, false, emptyList(), null, null, null, emptyMap(), false, null, emptyList(), emptyMap(), 0L, emptyList(), null)
+    constructor() : this("", "", "", "", 0L, EliteRank.TRAINEE.name, false, emptyList(), null, null, null, null, emptyMap(), false, null, emptyList(), emptyMap(), 0L, emptyList(), null)
 
     fun toMap(): Map<String, Any?> = mapOf(
         "id" to id,
@@ -38,6 +40,7 @@ data class ChatMessage(
         "rank" to rank,
         "isSystemMessage" to isSystemMessage,
         "readBy" to readBy,
+        "effectId" to effectId,
         "replyToId" to replyToId,
         "replyToNickname" to replyToNickname,
         "replyToMessage" to replyToMessage,

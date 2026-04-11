@@ -1,28 +1,18 @@
 package com.elites.fullcharge.ui.components
 
-import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.Text
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.elites.fullcharge.ui.theme.EliteGreen
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlin.math.PI
 import kotlin.math.cos
@@ -30,7 +20,7 @@ import kotlin.math.sin
 import kotlin.random.Random
 
 // ============================================================
-// 부사관 이펙트 (NCO Effects) - 로컬 전용, 상시 활성화
+// 타이핑 스파크 이펙트 - 모든 계급 상시 활성화
 // ============================================================
 
 /**
@@ -144,392 +134,215 @@ private data class SparkParticle(
     val color: Color
 )
 
-/**
- * 번개 테두리 Modifier
- * 말풍선 테두리에 전류가 흐르는 효과
- */
-fun Modifier.lightningBorder(
-    enabled: Boolean,
-    color: Color = Color(0xFF00BFFF),
-    strokeWidth: Dp = 1.5.dp
-): Modifier {
-    if (!enabled) return this
-
-    return this.drawBehind {
-        val width = size.width
-        val height = size.height
-        val stroke = strokeWidth.toPx()
-
-        // 현재 시간 기반 랜덤 오프셋 (지지직 효과)
-        val time = System.currentTimeMillis()
-        val seed = (time / 100) % 1000
-        val random = Random(seed)
-
-        // 번개 경로 생성
-        val path = Path()
-        val segments = 12
-        val segmentWidth = width / segments
-
-        // 상단 번개
-        path.moveTo(0f, random.nextFloat() * 3)
-        for (i in 1..segments) {
-            val x = i * segmentWidth
-            val yOffset = (random.nextFloat() - 0.5f) * 4
-            path.lineTo(x, yOffset)
-        }
-
-        drawPath(
-            path = path,
-            color = color.copy(alpha = 0.6f + random.nextFloat() * 0.3f),
-            style = Stroke(width = stroke)
-        )
-
-        // 하단 번개
-        val bottomPath = Path()
-        bottomPath.moveTo(0f, height + random.nextFloat() * 3)
-        for (i in 1..segments) {
-            val x = i * segmentWidth
-            val yOffset = height + (random.nextFloat() - 0.5f) * 4
-            bottomPath.lineTo(x, yOffset)
-        }
-
-        drawPath(
-            path = bottomPath,
-            color = color.copy(alpha = 0.6f + random.nextFloat() * 0.3f),
-            style = Stroke(width = stroke)
-        )
-
-        // 좌측 번개
-        val leftPath = Path()
-        val segmentHeight = height / 8
-        leftPath.moveTo(random.nextFloat() * 3, 0f)
-        for (i in 1..8) {
-            val y = i * segmentHeight
-            val xOffset = (random.nextFloat() - 0.5f) * 4
-            leftPath.lineTo(xOffset, y)
-        }
-
-        drawPath(
-            path = leftPath,
-            color = color.copy(alpha = 0.5f + random.nextFloat() * 0.3f),
-            style = Stroke(width = stroke * 0.8f)
-        )
-
-        // 우측 번개
-        val rightPath = Path()
-        rightPath.moveTo(width + random.nextFloat() * 3, 0f)
-        for (i in 1..8) {
-            val y = i * segmentHeight
-            val xOffset = width + (random.nextFloat() - 0.5f) * 4
-            rightPath.lineTo(xOffset, y)
-        }
-
-        drawPath(
-            path = rightPath,
-            color = color.copy(alpha = 0.5f + random.nextFloat() * 0.3f),
-            style = Stroke(width = stroke * 0.8f)
-        )
-    }
-}
-
-/**
- * 전송 버스트 이펙트
- * 메시지 전송 시 버튼에서 전기 폭발 효과
- *
- * @param trigger 이펙트 트리거 여부
- * @param onComplete 이펙트 완료 콜백
- */
-@Composable
-fun SendBurstEffect(
-    trigger: Boolean,
-    onComplete: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    var burstParticles by remember { mutableStateOf(listOf<BurstParticle>()) }
-
-    // 버스트 트리거
-    LaunchedEffect(trigger) {
-        if (trigger) {
-            // 파티클 생성 (더 많이, 더 크게)
-            burstParticles = (0 until 20).map { i ->
-                val angle = (i * 18f) + Random.nextFloat() * 10f
-                BurstParticle(
-                    angle = angle,
-                    distance = 0f,
-                    speed = 10f + Random.nextFloat() * 8f,
-                    size = 5f + Random.nextFloat() * 4f,
-                    alpha = 1f,
-                    color = if (i % 2 == 0) EliteGreen else Color(0xFF00BFFF)
-                )
-            }
-
-            // 애니메이션 (더 오래)
-            repeat(25) {
-                delay(16)
-                burstParticles = burstParticles.map { particle ->
-                    particle.copy(
-                        distance = particle.distance + particle.speed,
-                        alpha = (particle.alpha * 0.88f).coerceAtLeast(0.2f),
-                        size = particle.size * 0.96f
-                    )
-                }
-            }
-
-            burstParticles = emptyList()
-            onComplete()
-        }
-    }
-
-    // 항상 Canvas 렌더링
-    Canvas(
-        modifier = modifier.size(120.dp)
-    ) {
-        val centerX = size.width / 2
-        val centerY = size.height / 2
-
-        burstParticles.forEach { particle ->
-            val x = centerX + cos(particle.angle * PI / 180).toFloat() * particle.distance
-            val y = centerY + sin(particle.angle * PI / 180).toFloat() * particle.distance
-
-            // 글로우 효과
-            drawCircle(
-                color = particle.color.copy(alpha = particle.alpha * 0.3f),
-                radius = particle.size * 2f,
-                center = Offset(x, y)
-            )
-
-            // 파티클 원
-            drawCircle(
-                color = particle.color.copy(alpha = particle.alpha),
-                radius = particle.size,
-                center = Offset(x, y)
-            )
-
-            // 파티클 꼬리 (더 두꺼움)
-            val tailLength = particle.speed * 2f
-            drawLine(
-                color = particle.color.copy(alpha = particle.alpha * 0.7f),
-                start = Offset(x, y),
-                end = Offset(
-                    centerX + cos(particle.angle * PI / 180).toFloat() * (particle.distance - tailLength),
-                    centerY + sin(particle.angle * PI / 180).toFloat() * (particle.distance - tailLength)
-                ),
-                strokeWidth = particle.size * 0.9f
-            )
-        }
-    }
-}
-
-private data class BurstParticle(
-    val angle: Float,
-    val distance: Float,
-    val speed: Float,
-    val size: Float,
-    val alpha: Float,
-    val color: Color
-)
-
 // ============================================================
-// 장교 이펙트 (Officer Effects) - Firebase 동기화, 이벤트성
+// 전체 화면 타이핑 번개 이펙트 - 부사관/장교 전용
 // ============================================================
 
 /**
- * 도착 충격파 이펙트
- * 장교 메시지 도착 시 말풍선 주변으로 충격파 확산
+ * 전체 화면 타이핑 번개 이펙트
+ * 타이핑 시 화면 전체에 번개가 치는 효과
  *
- * @param trigger 이펙트 트리거 여부
- * @param onComplete 이펙트 완료 콜백
+ * @param isTyping 현재 타이핑 중 여부
+ * @param lightningColor 번개 색상 (부사관: 초록, 장교: 파랑)
+ * @param modifier Modifier
  */
 @Composable
-fun ArrivalShockwaveEffect(
-    trigger: Boolean,
-    onComplete: () -> Unit,
+fun FullScreenTypingLightning(
+    isTyping: Boolean,
+    lightningColor: Color,
     modifier: Modifier = Modifier
 ) {
-    var waves by remember { mutableStateOf(listOf<ShockWave>()) }
+    var lightningBolts by remember { mutableStateOf(listOf<TypingLightningBolt>()) }
+    var flashAlpha by remember { mutableStateOf(0f) }
+    var lastTriggerTime by remember { mutableStateOf(0L) }
 
-    LaunchedEffect(trigger) {
-        if (trigger) {
-            // 3개의 파동을 100ms 간격으로 생성
-            repeat(3) { i ->
-                delay(100L * i)
-                waves = waves + ShockWave(
-                    radius = 0f,
-                    alpha = 0.8f,
-                    strokeWidth = 3f
-                )
-            }
+    // 타이핑 시 번개 생성
+    LaunchedEffect(isTyping) {
+        if (isTyping) {
+            try {
+                while (true) {
+                    val currentTime = System.currentTimeMillis()
+                    // 최소 200ms 간격으로 번개 생성
+                    if (currentTime - lastTriggerTime >= 200) {
+                        lastTriggerTime = currentTime
 
-            // 애니메이션 (500ms 지속)
-            repeat(30) {
-                delay(16)
-                waves = waves.mapNotNull { wave ->
-                    val newRadius = wave.radius + 8f
-                    val newAlpha = wave.alpha * 0.9f
-                    if (newAlpha < 0.05f) null
-                    else wave.copy(
-                        radius = newRadius,
-                        alpha = newAlpha,
-                        strokeWidth = wave.strokeWidth * 0.95f
-                    )
+                        // 플래시 효과
+                        flashAlpha = 0.12f
+
+                        // 번개 줄기 생성 (1-2개)
+                        val boltCount = 1 + Random.nextInt(2)
+                        lightningBolts = (0 until boltCount).map {
+                            createTypingLightningBolt()
+                        }
+
+                        // 번개 페이드 아웃 애니메이션
+                        repeat(10) {
+                            delay(25)
+                            flashAlpha *= 0.75f
+                            lightningBolts = lightningBolts.map { bolt ->
+                                bolt.copy(alpha = bolt.alpha * 0.8f)
+                            }
+                        }
+
+                        lightningBolts = emptyList()
+                        flashAlpha = 0f
+                    }
+                    delay(60)
                 }
-            }
-
-            waves = emptyList()
-            onComplete()
-        }
-    }
-
-    if (waves.isNotEmpty()) {
-        Canvas(
-            modifier = modifier.fillMaxSize()
-        ) {
-            val centerX = size.width / 2
-            val centerY = size.height / 2
-
-            waves.forEach { wave ->
-                drawCircle(
-                    color = Color(0xFFFFD700).copy(alpha = wave.alpha),
-                    radius = wave.radius,
-                    center = Offset(centerX, centerY),
-                    style = Stroke(width = wave.strokeWidth)
-                )
+            } catch (e: CancellationException) {
+                // 코루틴 취소는 정상 동작
+                throw e
+            } catch (e: Exception) {
+                // 기타 예외 무시
             }
         }
-    }
-}
-
-private data class ShockWave(
-    val radius: Float,
-    val alpha: Float,
-    val strokeWidth: Float
-)
-
-/**
- * 권위 펄스 이펙트
- * 장교 메시지 주변이 지속적으로 맥동
- */
-@Composable
-fun AuthorityPulseEffect(
-    enabled: Boolean,
-    modifier: Modifier = Modifier
-) {
-    if (!enabled) return
-
-    val infiniteTransition = rememberInfiniteTransition(label = "authority_pulse")
-
-    val pulseAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.2f,
-        targetValue = 0.5f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1000, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "pulse_alpha"
-    )
-
-    val pulseRadius by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 8f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1000, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "pulse_radius"
-    )
-
-    Canvas(
-        modifier = modifier.fillMaxSize()
-    ) {
-        // 글로우 효과
-        drawRect(
-            color = Color(0xFFFFD700).copy(alpha = pulseAlpha * 0.3f),
-            size = Size(
-                size.width + pulseRadius * 2,
-                size.height + pulseRadius * 2
-            ),
-            topLeft = Offset(-pulseRadius, -pulseRadius)
-        )
-    }
-}
-
-/**
- * 입장 장악 오버레이
- * 장교 입장 시 전체 화면 플래시
- *
- * @param officerNickname 장교 닉네임
- * @param officerRank 장교 계급
- * @param onDismiss 오버레이 닫기 콜백
- */
-@Composable
-fun EntranceTakeoverOverlay(
-    visible: Boolean,
-    officerNickname: String,
-    officerRank: String,
-    onDismiss: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    var flashAlpha by remember { mutableFloatStateOf(0f) }
-
-    LaunchedEffect(visible) {
-        if (visible) {
-            // 플래시 인
-            repeat(10) {
-                flashAlpha = (it + 1) / 10f * 0.6f
-                delay(30)
-            }
-
-            // 유지
-            delay(1500)
-
-            // 플래시 아웃
-            repeat(15) {
-                flashAlpha = 0.6f * (1f - (it + 1) / 15f)
-                delay(30)
-            }
-
-            onDismiss()
-        } else {
-            flashAlpha = 0f
-        }
+        // isTyping이 false가 되면 상태 초기화
+        lightningBolts = emptyList()
+        flashAlpha = 0f
     }
 
-    if (flashAlpha > 0) {
-        Box(
-            modifier = modifier
-                .fillMaxSize()
-        ) {
-            Canvas(
-                modifier = Modifier.fillMaxSize()
-            ) {
-                // 금색 플래시
+    // 렌더링
+    if (lightningBolts.isNotEmpty() || flashAlpha > 0.01f) {
+        Canvas(modifier = modifier.fillMaxSize()) {
+            // 플래시 배경
+            if (flashAlpha > 0.01f) {
                 drawRect(
-                    color = Color(0xFFFFD700).copy(alpha = flashAlpha),
+                    color = lightningColor.copy(alpha = flashAlpha),
                     size = size
                 )
             }
 
-            // 장교 정보 표시 (중앙)
-            if (flashAlpha > 0.3f) {
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .offset(y = (-20).dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = officerRank,
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.Black.copy(alpha = (flashAlpha * 1.5f).coerceAtMost(1f))
-                    )
-                    Text(
-                        text = "$officerNickname 입장",
-                        fontSize = 18.sp,
-                        color = Color.Black.copy(alpha = (flashAlpha * 1.3f).coerceAtMost(1f))
-                    )
-                }
+            // 번개 줄기들
+            lightningBolts.forEach { bolt ->
+                drawTypingLightningBolt(bolt, lightningColor)
             }
+        }
+    }
+}
+
+/**
+ * 번개 줄기 데이터
+ */
+private data class TypingLightningBolt(
+    val segments: List<Offset>,  // 정규화된 좌표 (0~1)
+    val width: Float,
+    val alpha: Float,
+    val branches: List<List<Offset>> = emptyList()
+)
+
+/**
+ * 번개 줄기 생성
+ */
+private fun createTypingLightningBolt(): TypingLightningBolt {
+    val segments = mutableListOf<Offset>()
+    val random = Random
+
+    // 시작점 (화면 상단 랜덤 위치)
+    val startX = 0.1f + random.nextFloat() * 0.8f
+    var currentX = startX
+    var currentY = 0f
+
+    segments.add(Offset(currentX, currentY))
+
+    // 번개 경로 생성 (지그재그)
+    val segmentCount = 6 + random.nextInt(5)
+    val segmentHeight = 1f / segmentCount
+
+    for (i in 1..segmentCount) {
+        currentY = i * segmentHeight
+        // 좌우로 랜덤하게 움직임
+        currentX += (random.nextFloat() - 0.5f) * 0.25f
+        currentX = currentX.coerceIn(0.05f, 0.95f)
+        segments.add(Offset(currentX, currentY))
+    }
+
+    // 가지 번개 생성 (0-2개)
+    val branches = mutableListOf<List<Offset>>()
+    val branchCount = random.nextInt(3)
+    for (b in 0 until branchCount) {
+        val branchStartIdx = 2 + random.nextInt((segmentCount - 3).coerceAtLeast(1))
+        if (branchStartIdx < segments.size) {
+            val branchStart = segments[branchStartIdx]
+            val branchSegments = mutableListOf(branchStart)
+
+            var bx = branchStart.x
+            var by = branchStart.y
+            val direction = if (random.nextBoolean()) 1 else -1
+
+            for (bs in 1..3) {
+                bx += direction * (0.03f + random.nextFloat() * 0.04f)
+                by += 0.04f + random.nextFloat() * 0.03f
+                branchSegments.add(Offset(bx.coerceIn(0f, 1f), by.coerceIn(0f, 1f)))
+            }
+            branches.add(branchSegments)
+        }
+    }
+
+    return TypingLightningBolt(
+        segments = segments,
+        width = 2.5f + random.nextFloat() * 1.5f,
+        alpha = 1f,
+        branches = branches
+    )
+}
+
+/**
+ * 번개 줄기 그리기
+ */
+private fun DrawScope.drawTypingLightningBolt(
+    bolt: TypingLightningBolt,
+    color: Color
+) {
+    if (bolt.segments.size < 2) return
+
+    val path = Path()
+    val firstPoint = bolt.segments.first()
+    path.moveTo(firstPoint.x * size.width, firstPoint.y * size.height)
+
+    bolt.segments.drop(1).forEach { point ->
+        path.lineTo(point.x * size.width, point.y * size.height)
+    }
+
+    // 글로우 효과 (넓은 반투명)
+    drawPath(
+        path = path,
+        color = color.copy(alpha = bolt.alpha * 0.25f),
+        style = Stroke(width = bolt.width * 5f)
+    )
+
+    // 중간 글로우
+    drawPath(
+        path = path,
+        color = color.copy(alpha = bolt.alpha * 0.5f),
+        style = Stroke(width = bolt.width * 2.5f)
+    )
+
+    // 메인 번개 (밝은 색)
+    drawPath(
+        path = path,
+        color = Color.White.copy(alpha = bolt.alpha * 0.9f),
+        style = Stroke(width = bolt.width)
+    )
+
+    // 가지 번개
+    bolt.branches.forEach { branch ->
+        if (branch.size >= 2) {
+            val branchPath = Path()
+            branchPath.moveTo(branch.first().x * size.width, branch.first().y * size.height)
+            branch.drop(1).forEach { point ->
+                branchPath.lineTo(point.x * size.width, point.y * size.height)
+            }
+
+            drawPath(
+                path = branchPath,
+                color = color.copy(alpha = bolt.alpha * 0.35f),
+                style = Stroke(width = bolt.width * 2f)
+            )
+            drawPath(
+                path = branchPath,
+                color = Color.White.copy(alpha = bolt.alpha * 0.7f),
+                style = Stroke(width = bolt.width * 0.6f)
+            )
         }
     }
 }

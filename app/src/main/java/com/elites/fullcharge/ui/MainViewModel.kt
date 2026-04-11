@@ -585,7 +585,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     /**
      * 장교 입장 이벤트 관찰 시작
-     * 다른 장교가 입장하면 EntranceTakeoverOverlay 표시
+     * 다른 장교가 입장하면 이벤트 표시 (추후 새 이펙트 적용 예정)
      */
     private fun startOfficerEventsObservation() {
         officerEventsObserverJob?.cancel()

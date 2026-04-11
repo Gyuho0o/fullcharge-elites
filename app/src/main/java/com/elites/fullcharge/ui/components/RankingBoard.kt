@@ -51,7 +51,7 @@ fun TacticalRankingBoard(
     onCollapse: () -> Unit = {}
 ) {
     var activeTab by remember { mutableStateOf(RankingTab.LIVE) }
-    var dragOffset by remember { mutableFloatStateOf(0f) }
+    var dragOffset by remember { mutableStateOf(0f) }
 
     Box(
         modifier = modifier

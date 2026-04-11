@@ -29,7 +29,7 @@ fun LightningBurst(
     color: Color = TossBlueLight
 ) {
     var lightnings by remember { mutableStateOf<List<LightningBolt>>(emptyList()) }
-    var flashAlpha by remember { mutableFloatStateOf(0f) }
+    var flashAlpha by remember { mutableStateOf(0f) }
 
     // 트리거되면 번개 생성
     LaunchedEffect(trigger) {
@@ -116,7 +116,7 @@ fun BackgroundLightning(
     if (!enabled) return
 
     var bolts by remember { mutableStateOf<List<LightningBolt>>(emptyList()) }
-    var flashAlpha by remember { mutableFloatStateOf(0f) }
+    var flashAlpha by remember { mutableStateOf(0f) }
 
     // 강도에 따른 딜레이 범위
     val delayRange = when (intensityLevel) {

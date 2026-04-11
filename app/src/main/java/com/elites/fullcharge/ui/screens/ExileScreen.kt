@@ -396,7 +396,7 @@ private fun ReEnlistButton(
     isEnabled: Boolean,
     onDismiss: () -> Unit
 ) {
-    var progress by remember { mutableFloatStateOf(0f) }
+    var progress by remember { mutableStateOf(0f) }
 
     // 자동 이동 타이머
     LaunchedEffect(Unit) {
