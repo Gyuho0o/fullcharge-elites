@@ -831,6 +831,25 @@ class ChatRepository {
     }
 
     /**
+     * 사용자의 sessionStartTime 변경 감지 (관리자 계급 변경 시 실시간 반영)
+     */
+    fun observeUserSessionStartTime(userId: String): Flow<Long> = callbackFlow {
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val sessionStartTime = snapshot.getValue(Long::class.java) ?: 0L
+                trySend(sessionStartTime)
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                // 무시
+            }
+        }
+
+        usersRef.child(userId).child("sessionStartTime").addValueEventListener(listener)
+        awaitClose { usersRef.child(userId).child("sessionStartTime").removeEventListener(listener) }
+    }
+
+    /**
      * 관리자: 메시지 삭제
      */
     suspend fun deleteMessage(messageId: String) {

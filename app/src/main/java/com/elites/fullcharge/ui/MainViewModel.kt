@@ -102,6 +102,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var messageObserverJob: Job? = null
     private var onlineUsersObserverJob: Job? = null
     private var officerEventsObserverJob: Job? = null
+    private var sessionStartTimeObserverJob: Job? = null
 
     // 시간 기반 이벤트 추적
     private var lastCheckedHour = -1
@@ -368,6 +369,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             // 장교 입장 이벤트 관찰 시작
             startOfficerEventsObservation()
 
+            // 자신의 sessionStartTime 변경 감지 (관리자 계급 변경 실시간 반영)
+            startSessionStartTimeObservation()
+
             // 세션 타이머 시작
             startSessionTimer()
 
@@ -448,6 +452,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             // 장교 입장 이벤트 관찰 시작
             startOfficerEventsObservation()
+
+            // 자신의 sessionStartTime 변경 감지 (관리자 계급 변경 실시간 반영)
+            startSessionStartTimeObservation()
 
             // 세션 타이머 시작
             startSessionTimer()
@@ -594,6 +601,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             chatRepository.getOfficerEntranceEvents(state.userId).collect { event ->
                 // 장교 입장 이벤트 표시
                 _uiState.update { it.copy(latestChatEvent = event) }
+            }
+        }
+    }
+
+    /**
+     * 자신의 sessionStartTime 변경 감지 (관리자가 계급 변경 시 실시간 반영)
+     */
+    private fun startSessionStartTimeObservation() {
+        sessionStartTimeObserverJob?.cancel()
+        sessionStartTimeObserverJob = viewModelScope.launch {
+            val state = _uiState.value
+            chatRepository.observeUserSessionStartTime(state.userId).collect { newSessionStartTime ->
+                val currentStartTime = _uiState.value.sessionStartTime
+                // sessionStartTime이 변경되었고, 유효한 값인 경우에만 업데이트
+                if (newSessionStartTime > 0 && newSessionStartTime != currentStartTime) {
+                    _uiState.update { it.copy(sessionStartTime = newSessionStartTime) }
+                }
             }
         }
     }
@@ -1013,6 +1037,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             onlineUsersObserverJob?.cancel()
             joinLeaveIndicatorJob?.cancel()
             officerEventsObserverJob?.cancel()
+            sessionStartTimeObserverJob?.cancel()
 
             // 백그라운드 서비스 종료 (정상 종료이므로 퇴장 메시지 없음)
             stopBackgroundServiceGracefully()
