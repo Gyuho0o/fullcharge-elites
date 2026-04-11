@@ -3693,9 +3693,9 @@ private fun MessageTextWithEmoji(
                     val drawableResId = RankEmoji.getEmojiDrawableResId(part.emojiId)
                     if (drawableResId != null) {
                         val isOfficerEmoji = part.emojiId in 201..300
-                        // 부사관: 44dp (3개 1줄), 장교: 120dp (통일)
-                        val emojiSize = if (isOfficerEmoji) 120.dp else 44.dp
-                        val boxSize = if (isOfficerEmoji) 128.dp else 52.dp
+                        // 부사관: 44dp (3개 1줄), 장교: 240dp (통일)
+                        val emojiSize = if (isOfficerEmoji) 240.dp else 44.dp
+                        val boxSize = if (isOfficerEmoji) 248.dp else 52.dp
 
                         Box(
                             modifier = Modifier
