@@ -13,8 +13,8 @@ android {
         applicationId = "com.elites.fullcharge"
         minSdk = 26
         targetSdk = 35
-        versionCode = 49
-        versionName = "1.4.17"
+        versionCode = 51
+        versionName = "1.4.19"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -24,7 +24,8 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
