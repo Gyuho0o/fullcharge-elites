@@ -3564,10 +3564,12 @@ private fun EmojiSection(
             Spacer(modifier = Modifier.height(8.dp))
         }
 
+        // 1줄에 5개 이모지가 나오도록 Grid 사용
         androidx.compose.foundation.layout.FlowRow(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            maxItemsInEachRow = 5
         ) {
             emojis.forEach { emoji ->
                 val isAvailable = availableEmojis.any { it.id == emoji.id }
@@ -3587,10 +3589,11 @@ private fun EmojiButton(
     isAvailable: Boolean,
     onClick: () -> Unit
 ) {
+    // 1줄에 5개 + 8dp 간격 4개 = (width - 32) / 5 ≈ 60dp
     Box(
         modifier = Modifier
-            .size(72.dp)  // 56dp -> 72dp로 크기 증가
-            .clip(RoundedCornerShape(12.dp))
+            .size(60.dp)
+            .clip(RoundedCornerShape(10.dp))
             .background(
                 if (isAvailable) MutedBlack
                 else MutedBlack.copy(alpha = 0.3f)
@@ -3604,9 +3607,9 @@ private fun EmojiButton(
         androidx.compose.foundation.Image(
             painter = androidx.compose.ui.res.painterResource(id = emoji.drawableResId),
             contentDescription = emoji.displayName,
-            contentScale = androidx.compose.ui.layout.ContentScale.Fit,  // 1:1 비율 유지
+            contentScale = androidx.compose.ui.layout.ContentScale.Fit,
             modifier = Modifier
-                .size(56.dp)  // 40dp -> 56dp로 크기 증가
+                .size(48.dp)
                 .graphicsLayer {
                     alpha = if (isAvailable) 1f else 0.3f
                 }
@@ -3620,7 +3623,7 @@ private fun EmojiButton(
             ) {
                 Text(
                     text = "🔒",
-                    fontSize = 16.sp
+                    fontSize = 14.sp
                 )
             }
         }
@@ -3689,26 +3692,38 @@ private fun MessageTextWithEmoji(
                 is MessagePart.EmojiPart -> {
                     val drawableResId = RankEmoji.getEmojiDrawableResId(part.emojiId)
                     if (drawableResId != null) {
-                        // 모든 이모지 1:1 비율, 64dp 크기
-                        val emojiSize = 64.dp
+                        val isOfficerEmoji = part.emojiId in 201..300
 
-                        Box(
-                            modifier = Modifier
-                                .padding(horizontal = 2.dp)
-                                .size(emojiSize + 8.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(
-                                    if (isMine) Color.Black.copy(alpha = 0.3f)
-                                    else Color.Transparent
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
+                        if (isOfficerEmoji) {
+                            // 장교 이모지: 원본 크기 (최대 너비 제한)
                             androidx.compose.foundation.Image(
                                 painter = androidx.compose.ui.res.painterResource(id = drawableResId),
                                 contentDescription = "이모지",
                                 contentScale = androidx.compose.ui.layout.ContentScale.Fit,
-                                modifier = Modifier.size(emojiSize)
+                                modifier = Modifier
+                                    .widthIn(max = 240.dp)
+                                    .padding(vertical = 4.dp)
                             )
+                        } else {
+                            // 부사관 이모지: 48dp (3개가 1줄에 나오는 크기)
+                            Box(
+                                modifier = Modifier
+                                    .padding(horizontal = 2.dp)
+                                    .size(52.dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(
+                                        if (isMine) Color.Black.copy(alpha = 0.2f)
+                                        else Color.Transparent
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                androidx.compose.foundation.Image(
+                                    painter = androidx.compose.ui.res.painterResource(id = drawableResId),
+                                    contentDescription = "이모지",
+                                    contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+                                    modifier = Modifier.size(44.dp)
+                                )
+                            }
                         }
                     }
                 }
