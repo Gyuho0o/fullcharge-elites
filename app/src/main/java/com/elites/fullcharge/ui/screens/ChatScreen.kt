@@ -295,6 +295,7 @@ fun ChatScreen(
                                 message = message,
                                 isMine = message.userId == currentUserId,
                                 currentUserId = currentUserId,
+                                onlineUsers = onlineUsers,
                                 onToggleReaction = onToggleReaction,
                                 isBlocked = blockedUserIds.contains(message.userId),
                                 onBlockUser = { onBlockUser(message.userId) },
@@ -1404,16 +1405,19 @@ private fun UserMessage(
     message: ChatMessage,
     isMine: Boolean,
     currentUserId: String = "",
+    onlineUsers: List<EliteUser> = emptyList(),
     onToggleReaction: (String, String) -> Unit = { _, _ -> },
     isBlocked: Boolean = false,
     onBlockUser: () -> Unit = {},
     onUnblockUser: () -> Unit = {}
 ) {
-    val rank = try {
-        EliteRank.valueOf(message.rank)
-    } catch (e: Exception) {
-        EliteRank.TRAINEE
-    }
+    // 온라인 유저 목록에서 실시간 계급 조회, 없으면 메시지에 저장된 계급 사용
+    val rank = onlineUsers.find { it.userId == message.userId }?.rank
+        ?: try {
+            EliteRank.valueOf(message.rank)
+        } catch (e: Exception) {
+            EliteRank.TRAINEE
+        }
 
     val bubbleShape = RoundedCornerShape(
         topStart = if (isMine) 16.dp else 4.dp,
