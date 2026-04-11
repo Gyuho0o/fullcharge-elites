@@ -1772,9 +1772,8 @@ private fun MessageInputSection(
     modifier: Modifier = Modifier
 ) {
     val hasText = value.isNotBlank()
-    val canUseEmoji = RankEmoji.canUseEmoji(currentRank)
 
-    // 부사관 이펙트 활성화 여부 (하사~원사)
+    // 부사관 이상 이펙트 활성화 여부
     val isNcoRank = RankEffect.canUseNcoEffects(currentRank)
 
     // 전송 버스트 이펙트 트리거
@@ -1801,22 +1800,19 @@ private fun MessageInputSection(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)  // v0: gap-2
             ) {
-                // Emoji Button (하사 이상만 활성화)
+                // Emoji Button
                 Box(
                     modifier = Modifier
                         .size(48.dp)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(
-                            if (canUseEmoji) MutedBlack
-                            else MutedBlack.copy(alpha = 0.3f)
-                        )
-                        .clickable(enabled = canUseEmoji) { onEmojiClick() },
+                        .background(MutedBlack)
+                        .clickable { onEmojiClick() },
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = if (canUseEmoji) "😊" else "🔒",
+                        text = "😊",
                         fontSize = 20.sp,
-                        color = if (canUseEmoji) ForegroundWhite else ForegroundMuted
+                        color = ForegroundWhite
                     )
                 }
 
@@ -1828,8 +1824,7 @@ private fun MessageInputSection(
                         modifier = Modifier.fillMaxWidth(),
                         placeholder = {
                             Text(
-                                text = if (canUseEmoji) "메시지를 입력하십시오..."
-                                       else "하사 이상부터 이모지 사용 가능",
+                                text = "메시지를 입력하십시오...",
                                 color = ForegroundMuted,
                                 fontSize = 14.sp
                             )
@@ -3497,12 +3492,6 @@ private fun EmojiPickerSheet(
                     fontWeight = FontWeight.SemiBold,
                     color = ForegroundWhite
                 )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "현재 계급: ${currentRank.koreanName}",
-                    fontSize = 12.sp,
-                    color = ForegroundMuted
-                )
                 Spacer(modifier = Modifier.height(16.dp))
             }
         }
@@ -3513,42 +3502,43 @@ private fun EmojiPickerSheet(
                 .padding(horizontal = 16.dp)
                 .padding(bottom = 32.dp)
         ) {
-            // 부사관 이모지 (ID: 1~15)
+            // 공통 이모지 (ID: 1~8) - 모든 계급
+            val commonEmojis = allEmojis.filter { it.id in 1..100 }
             EmojiSection(
-                title = "부사관 이모지",
-                titleColor = Color(0xFF3B82F6),
-                emojis = allEmojis.filter { it.id in 1..15 },
+                title = "공통",
+                titleColor = Color(0xFF6B7280),
+                emojis = commonEmojis,
                 availableEmojis = availableEmojis,
                 onEmojiSelected = onEmojiSelected
             )
             Spacer(modifier = Modifier.height(16.dp))
 
-            // 장교 이모지 (ID: 101~199)
-            val coEmojis = allEmojis.filter { it.id in 101..199 }
-            if (coEmojis.isNotEmpty()) {
+            // 부사관 이모지 (ID: 101~108) - 하사 이상
+            val ncoEmojis = allEmojis.filter { it.id in 101..200 }
+            if (ncoEmojis.isNotEmpty()) {
                 EmojiSection(
-                    title = "장교 이모지",
+                    title = "부사관 전용",
                     titleColor = Color(0xFF10B981),
-                    emojis = coEmojis,
+                    emojis = ncoEmojis,
                     availableEmojis = availableEmojis,
                     onEmojiSelected = onEmojiSelected,
-                    lockedMessage = if (currentRank.ordinal < EliteRank.SECOND_LIEUTENANT.ordinal)
-                        "소위 이상 사용 가능" else null
+                    lockedMessage = if (currentRank.ordinal < EliteRank.STAFF_SERGEANT.ordinal)
+                        "하사 이상 사용 가능" else null
                 )
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
-            // 영관급 이모지 (ID: 201~300) - 추후 추가
-            val foEmojis = allEmojis.filter { it.id in 201..300 }
-            if (foEmojis.isNotEmpty()) {
+            // 장교 이모지 (ID: 201~208) - 소위 이상
+            val officerEmojis = allEmojis.filter { it.id in 201..300 }
+            if (officerEmojis.isNotEmpty()) {
                 EmojiSection(
-                    title = "영관급 이모지",
-                    titleColor = Color(0xFF7C3AED),
-                    emojis = foEmojis,
+                    title = "장교 전용",
+                    titleColor = Color(0xFF8B5CF6),
+                    emojis = officerEmojis,
                     availableEmojis = availableEmojis,
                     onEmojiSelected = onEmojiSelected,
-                    lockedMessage = if (currentRank.ordinal < EliteRank.MAJOR.ordinal)
-                        "소령 이상 사용 가능" else null
+                    lockedMessage = if (currentRank.ordinal < EliteRank.SECOND_LIEUTENANT.ordinal)
+                        "소위 이상 사용 가능" else null
                 )
             }
         }
@@ -3558,34 +3548,36 @@ private fun EmojiPickerSheet(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun EmojiSection(
-    title: String,
-    titleColor: Color,
+    title: String? = null,
+    titleColor: Color = ForegroundWhite,
     emojis: List<RankEmoji.EmojiItem>,
     availableEmojis: List<RankEmoji.EmojiItem>,
     onEmojiSelected: (RankEmoji.EmojiItem) -> Unit,
     lockedMessage: String? = null
 ) {
     Column {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = title,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = titleColor
-            )
-            if (lockedMessage != null) {
+        if (title != null) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(
-                    text = "🔒 $lockedMessage",
-                    fontSize = 11.sp,
-                    color = ForegroundMuted
+                    text = title,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = titleColor
                 )
+                if (lockedMessage != null) {
+                    Text(
+                        text = "🔒 $lockedMessage",
+                        fontSize = 11.sp,
+                        color = ForegroundMuted
+                    )
+                }
             }
+            Spacer(modifier = Modifier.height(8.dp))
         }
-        Spacer(modifier = Modifier.height(8.dp))
 
         androidx.compose.foundation.layout.FlowRow(
             modifier = Modifier.fillMaxWidth(),

@@ -3,12 +3,11 @@ package com.elites.fullcharge.data
 import com.elites.fullcharge.R
 
 /**
- * 계급별 사용 가능한 이모지 정의
+ * 계급별 이모지 시스템
  *
- * - 부사관(하사~원사): nco_01 ~ nco_13, nco_08_1, nco_08_2 (15개)
- * - 위관급(소위~대위): co_01 ~ co_06 (6개)
- * - 영관급(소령~대령): 추후 추가
- * - 장성급(준장~대장): 휘장 시스템 (추후 구현)
+ * - 공통 이모지 (8개): 모든 계급 사용 가능
+ * - 부사관 이모지 (8개): 하사~원사 전용 (녹색 번개 테마)
+ * - 장교 이모지 (8개): 소위 이상 전용 (보라/금색 왕관 테마)
  */
 object RankEmoji {
 
@@ -21,77 +20,65 @@ object RankEmoji {
         val displayName: String
     )
 
-    // 부사관용 이모지 (하사~원사) - 15개
+    // 공통 이모지 - 모든 계급 사용 가능 (8개)
+    private val COMMON_EMOJIS = listOf(
+        EmojiItem(1, R.drawable.common_01, "완충!"),
+        EmojiItem(2, R.drawable.common_02, "감사!"),
+        EmojiItem(3, R.drawable.common_03, "최고야!"),
+        EmojiItem(4, R.drawable.common_04, "전우!"),
+        EmojiItem(5, R.drawable.common_05, "ㅋㅋㅋ"),
+        EmojiItem(6, R.drawable.common_06, "힘..."),
+        EmojiItem(7, R.drawable.common_07, "수고!"),
+        EmojiItem(8, R.drawable.common_08, "완충은 사랑")
+    )
+
+    // 부사관 이모지 - 하사~원사 전용 (8개, 녹색 번개)
     private val NCO_EMOJIS = listOf(
-        EmojiItem(1, R.drawable.nco_01, "악!"),
-        EmojiItem(2, R.drawable.nco_02, "깡!"),
-        EmojiItem(3, R.drawable.nco_03, "버!"),
-        EmojiItem(4, R.drawable.nco_04, "좋!"),
-        EmojiItem(5, R.drawable.nco_05, "아!"),
-        EmojiItem(6, R.drawable.nco_06, "요!"),
-        EmojiItem(7, R.drawable.nco_07, "부사관 7"),
-        EmojiItem(8, R.drawable.nco_08, "부사관 8"),
-        EmojiItem(9, R.drawable.nco_08_1, "부사관 8-1"),
-        EmojiItem(10, R.drawable.nco_08_2, "부사관 8-2"),
-        EmojiItem(11, R.drawable.nco_09, "부사관 9"),
-        EmojiItem(12, R.drawable.nco_10, "부사관 10"),
-        EmojiItem(13, R.drawable.nco_11, "같!"),
-        EmojiItem(14, R.drawable.nco_12, "다!"),
-        EmojiItem(15, R.drawable.nco_13, "마!")
+        EmojiItem(101, R.drawable.nco_01, "충전 완료!"),
+        EmojiItem(102, R.drawable.nco_02, "좋았어"),
+        EmojiItem(103, R.drawable.nco_03, "간다!"),
+        EmojiItem(104, R.drawable.nco_04, "지켜보지"),
+        EmojiItem(105, R.drawable.nco_05, "입장"),
+        EmojiItem(106, R.drawable.nco_06, "집중해라"),
+        EmojiItem(107, R.drawable.nco_07, "하하하!"),
+        EmojiItem(108, R.drawable.nco_08, "인정한다")
     )
 
-    // 장교용 이모지 (소위 이상) - 6개
-    private val COMPANY_OFFICER_EMOJIS = listOf(
-        EmojiItem(101, R.drawable.co_01, "장교 1"),
-        EmojiItem(102, R.drawable.co_02, "장교 2"),
-        EmojiItem(103, R.drawable.co_03, "장교 3"),
-        EmojiItem(104, R.drawable.co_04, "장교 4"),
-        EmojiItem(105, R.drawable.co_05, "장교 5"),
-        EmojiItem(106, R.drawable.co_06, "장교 6")
+    // 장교 이모지 - 소위 이상 전용 (8개, 보라/금색)
+    private val OFFICER_EMOJIS = listOf(
+        EmojiItem(201, R.drawable.officer_01, "충전 완료!"),
+        EmojiItem(202, R.drawable.officer_02, "좋았어"),
+        EmojiItem(203, R.drawable.officer_03, "간다!"),
+        EmojiItem(204, R.drawable.officer_04, "지켜보지"),
+        EmojiItem(205, R.drawable.officer_05, "입장"),
+        EmojiItem(206, R.drawable.officer_06, "집중해라"),
+        EmojiItem(207, R.drawable.officer_07, "하하하!"),
+        EmojiItem(208, R.drawable.officer_08, "인정한다")
     )
-
-    // 영관급용 이모지 (소령~대령) - 추후 추가
-    private val FIELD_OFFICER_EMOJIS = listOf<EmojiItem>()
 
     /**
      * 현재 계급에서 사용 가능한 이모지 목록 반환
      */
     fun getAvailableEmojis(rank: EliteRank): List<EmojiItem> {
-        return when (rank) {
-            // 병사급: 이모지 사용 불가
-            EliteRank.TRAINEE,
-            EliteRank.PRIVATE_SECOND,
-            EliteRank.PRIVATE_FIRST,
-            EliteRank.CORPORAL,
-            EliteRank.SERGEANT -> emptyList()
+        return when {
+            // 장교 (소위 이상): 공통 + 부사관 + 장교
+            rank.ordinal >= EliteRank.SECOND_LIEUTENANT.ordinal ->
+                COMMON_EMOJIS + NCO_EMOJIS + OFFICER_EMOJIS
 
-            // 부사관급: NCO 이모지
-            EliteRank.STAFF_SERGEANT,
-            EliteRank.SERGEANT_FIRST,
-            EliteRank.MASTER_SERGEANT,
-            EliteRank.SERGEANT_MAJOR -> NCO_EMOJIS
+            // 부사관 (하사~원사): 공통 + 부사관
+            rank.ordinal >= EliteRank.STAFF_SERGEANT.ordinal ->
+                COMMON_EMOJIS + NCO_EMOJIS
 
-            // 위관급: NCO + 장교 이모지
-            EliteRank.SECOND_LIEUTENANT,
-            EliteRank.FIRST_LIEUTENANT,
-            EliteRank.CAPTAIN -> NCO_EMOJIS + COMPANY_OFFICER_EMOJIS
-
-            // 영관급 이상: 전체 이모지
-            EliteRank.MAJOR,
-            EliteRank.LIEUTENANT_COLONEL,
-            EliteRank.COLONEL,
-            EliteRank.BRIGADIER_GENERAL,
-            EliteRank.MAJOR_GENERAL,
-            EliteRank.LIEUTENANT_GENERAL,
-            EliteRank.GENERAL -> NCO_EMOJIS + COMPANY_OFFICER_EMOJIS + FIELD_OFFICER_EMOJIS
+            // 병사급: 공통만
+            else -> COMMON_EMOJIS
         }
     }
 
     /**
-     * 이모지 사용 가능 여부 (하사 이상만 사용 가능)
+     * 이모지 사용 가능 여부 (모든 계급 사용 가능)
      */
     fun canUseEmoji(rank: EliteRank): Boolean {
-        return rank.ordinal >= EliteRank.STAFF_SERGEANT.ordinal
+        return true
     }
 
     /**
@@ -106,7 +93,7 @@ object RankEmoji {
      * 이모지 ID로 drawable 리소스 ID 가져오기
      */
     fun getEmojiDrawableResId(emojiId: Int): Int? {
-        val allEmojis = NCO_EMOJIS + COMPANY_OFFICER_EMOJIS + FIELD_OFFICER_EMOJIS
+        val allEmojis = COMMON_EMOJIS + NCO_EMOJIS + OFFICER_EMOJIS
         return allEmojis.find { it.id == emojiId }?.drawableResId
     }
 
@@ -114,7 +101,7 @@ object RankEmoji {
      * 모든 이모지 목록
      */
     fun getAllEmojis(): List<EmojiItem> {
-        return NCO_EMOJIS + COMPANY_OFFICER_EMOJIS + FIELD_OFFICER_EMOJIS
+        return COMMON_EMOJIS + NCO_EMOJIS + OFFICER_EMOJIS
     }
 
     /**
@@ -122,33 +109,24 @@ object RankEmoji {
      */
     fun getMinimumRankForEmoji(emojiId: Int): EliteRank {
         return when (emojiId) {
-            in 1..15 -> EliteRank.STAFF_SERGEANT  // 부사관용
-            in 101..106 -> EliteRank.SECOND_LIEUTENANT  // 위관급용
-            in 201..300 -> EliteRank.MAJOR  // 영관급용 (추후)
+            in 1..100 -> EliteRank.TRAINEE           // 공통: 모든 계급
+            in 101..200 -> EliteRank.STAFF_SERGEANT  // 부사관용: 하사 이상
+            in 201..300 -> EliteRank.SECOND_LIEUTENANT // 장교용: 소위 이상
             else -> EliteRank.GENERAL
         }
     }
 
     /**
-     * 이모지 잠금 해제까지 필요한 계급 설명
-     */
-    fun getUnlockRequirement(emojiId: Int): String {
-        val minRank = getMinimumRankForEmoji(emojiId)
-        return "${minRank.koreanName} 이상 사용 가능"
-    }
-
-    /**
      * 메시지에서 사용 불가능한 이모지 태그 제거
-     * 계급에 맞지 않는 [emoji:X] 태그를 빈 문자열로 치환
      */
     fun filterUnauthorizedEmojis(message: String, rank: EliteRank): String {
         val emojiPattern = "\\[emoji:(\\d+)]".toRegex()
         return emojiPattern.replace(message) { match ->
             val emojiId = match.groupValues[1].toIntOrNull()
             if (emojiId != null && canUseEmojiId(rank, emojiId)) {
-                match.value  // 사용 가능하면 그대로 유지
+                match.value
             } else {
-                ""  // 사용 불가하면 제거
+                ""
             }
         }
     }
