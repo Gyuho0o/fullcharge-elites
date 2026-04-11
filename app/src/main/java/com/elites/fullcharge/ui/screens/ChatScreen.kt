@@ -42,6 +42,12 @@ import com.elites.fullcharge.data.*
 import com.elites.fullcharge.ui.components.ChargingParticles
 import com.elites.fullcharge.ui.components.JoinLeaveIndicator
 import com.elites.fullcharge.ui.components.RankInsignia
+import com.elites.fullcharge.ui.components.ArrivalShockwaveEffect
+import com.elites.fullcharge.ui.components.AuthorityPulseEffect
+import com.elites.fullcharge.ui.components.EntranceTakeoverOverlay
+import com.elites.fullcharge.ui.components.SendBurstEffect
+import com.elites.fullcharge.ui.components.TypingSparkEffect
+import com.elites.fullcharge.ui.components.lightningBorder
 import com.elites.fullcharge.ui.theme.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -106,10 +112,6 @@ fun ChatScreen(
     recentJoinCount: Int = 0,
     recentLeaveCount: Int = 0,
     showJoinLeaveIndicator: Boolean = false,
-    // 버블 이펙트 관련
-    onActivateBubbleEffect: (RankEffect.EffectType) -> Unit = {},
-    myBubbleEffect: RankEffect.EffectType? = null,
-    myBubbleEffectExpiry: Long = 0L,
     modifier: Modifier = Modifier
 ) {
     var messageInput by remember { mutableStateOf("") }
@@ -183,6 +185,17 @@ fun ChatScreen(
                 onDismiss = onDismissChatEvent
             )
         }
+    }
+
+    // 장교 입장 이펙트 (EntranceTakeoverOverlay)
+    if (latestChatEvent is ChatEvent.OfficerEntered) {
+        val officerEvent = latestChatEvent as ChatEvent.OfficerEntered
+        EntranceTakeoverOverlay(
+            visible = true,
+            officerNickname = officerEvent.nickname,
+            officerRank = officerEvent.rank.koreanName,
+            onDismiss = onDismissChatEvent
+        )
     }
 
     Box(
@@ -274,10 +287,6 @@ fun ChatScreen(
                         // 일반 시스템 메시지
                         message.isSystemMessage -> SystemMessage(message = message)
                         else -> {
-                            // 발신자의 버블 이펙트 조회
-                            val senderUser = onlineUsers.find { it.userId == message.userId }
-                            val bubbleEffect = senderUser?.activeBubbleEffect
-
                             UserMessage(
                                 message = message,
                                 isMine = message.userId == currentUserId,
@@ -285,8 +294,7 @@ fun ChatScreen(
                                 onToggleReaction = onToggleReaction,
                                 isBlocked = blockedUserIds.contains(message.userId),
                                 onBlockUser = { onBlockUser(message.userId) },
-                                onUnblockUser = { onUnblockUser(message.userId) },
-                                bubbleEffect = bubbleEffect
+                                onUnblockUser = { onUnblockUser(message.userId) }
                             )
                         }
                     }
@@ -324,12 +332,6 @@ fun ChatScreen(
                     messageInput = messageInput + "[emoji:${emoji.id}]"
                     showEmojiPicker = false
                 },
-                onEffectSelected = { effect ->
-                    onActivateBubbleEffect(effect)
-                    showEmojiPicker = false
-                },
-                myBubbleEffect = myBubbleEffect,
-                myBubbleEffectExpiry = myBubbleEffectExpiry,
                 onDismiss = { showEmojiPicker = false }
             )
         }
@@ -1401,13 +1403,30 @@ private fun UserMessage(
     onToggleReaction: (String, String) -> Unit = { _, _ -> },
     isBlocked: Boolean = false,
     onBlockUser: () -> Unit = {},
-    onUnblockUser: () -> Unit = {},
-    bubbleEffect: RankEffect.EffectType? = null
+    onUnblockUser: () -> Unit = {}
 ) {
     val rank = try {
         EliteRank.valueOf(message.rank)
     } catch (e: Exception) {
         EliteRank.TRAINEE
+    }
+
+    // 부사관 번개 테두리 이펙트 (내 메시지만)
+    val isNcoRank = RankEffect.isNcoRank(rank)
+
+    // 장교 이펙트 (타인의 장교 메시지만)
+    val isOfficerRank = RankEffect.isOfficerRank(rank)
+    val showOfficerEffects = isOfficerRank && !isMine
+
+    // 도착 충격파 트리거 (메시지 최초 표시 시 한 번만)
+    var hasShownShockwave by remember { mutableStateOf(false) }
+    var triggerShockwave by remember { mutableStateOf(false) }
+
+    LaunchedEffect(showOfficerEffects) {
+        if (showOfficerEffects && !hasShownShockwave) {
+            triggerShockwave = true
+            hasShownShockwave = true
+        }
     }
 
     val bubbleShape = RoundedCornerShape(
@@ -1515,87 +1534,56 @@ private fun UserMessage(
                 )
             }
 
-            // 버블 이펙트 색상 정의
-            val effectColor = when (bubbleEffect) {
-                RankEffect.EffectType.CHARGING -> Color(0xFF00FF00)  // 밝은 초록
-                RankEffect.EffectType.SPARK_BORDER -> Color(0xFFFFD700)  // 금색
-                RankEffect.EffectType.GLOW_GREEN -> EliteGreen
-                RankEffect.EffectType.PULSE -> Color(0xFFFF6B9D)  // 핑크
-                RankEffect.EffectType.ELECTRIC -> Color(0xFF00BFFF)  // 전기 파랑
-                RankEffect.EffectType.FULL_CHARGE -> Color(0xFFFFD700)  // 금색
-                RankEffect.EffectType.GOLDEN_AURA -> Color(0xFFFFD700)  // 금색
-                RankEffect.EffectType.FIRE_BORDER -> Color(0xFFFF4500)  // 불꽃 주황
-                RankEffect.EffectType.RAINBOW -> Color(0xFFFF00FF)  // 마젠타 (무지개 시작)
-                RankEffect.EffectType.ELITE_GLOW -> Color(0xFF9400D3)  // 보라
-                null -> Color.Transparent
-            }
-
-            // 버블 이펙트 애니메이션 (이펙트가 있을 때만)
-            val hasBubbleEffect = bubbleEffect != null
-            val infiniteTransition = rememberInfiniteTransition(label = "bubble_effect")
-
-            val pulseAlpha by infiniteTransition.animateFloat(
-                initialValue = if (hasBubbleEffect) 0.5f else 0f,
-                targetValue = if (hasBubbleEffect) 1f else 0f,
-                animationSpec = infiniteRepeatable(
-                    animation = tween(800, easing = FastOutSlowInEasing),
-                    repeatMode = RepeatMode.Reverse
-                ),
-                label = "pulse_alpha"
-            )
-
-            val pulseWidth by infiniteTransition.animateFloat(
-                initialValue = if (hasBubbleEffect) 1.5f else 0f,
-                targetValue = if (hasBubbleEffect) 3f else 0f,
-                animationSpec = infiniteRepeatable(
-                    animation = tween(800, easing = FastOutSlowInEasing),
-                    repeatMode = RepeatMode.Reverse
-                ),
-                label = "pulse_width"
-            )
-
-            // Message Bubble with long press
-            Box(
-                modifier = Modifier
-                    .wrapContentWidth()
-                    .widthIn(max = 240.dp)
-                    .clip(bubbleShape)
-                    .background(if (isMine) EliteGreen else CardBlack)
-                    .then(
-                        when {
-                            hasBubbleEffect -> Modifier.border(
-                                width = pulseWidth.dp,
-                                color = effectColor.copy(alpha = pulseAlpha),
-                                shape = bubbleShape
-                            )
-                            !isMine -> Modifier.border(1.dp, EliteGreen.copy(alpha = 0.2f), bubbleShape)
-                            else -> Modifier
-                        }
-                    )
-                    .combinedClickable(
-                        onClick = { if (showReactionPicker) showReactionPicker = false },
-                        onLongClick = { showReactionPicker = true }
-                    )
-                    .padding(12.dp)
-            ) {
-                // 이펙트 아이콘 표시 (버블 이펙트가 있을 때)
-                if (hasBubbleEffect) {
-                    Text(
-                        text = bubbleEffect?.emoji ?: "",
-                        fontSize = 10.sp,
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .offset(x = 4.dp, y = (-8).dp)
+            // Message Bubble with long press + Officer Effects
+            Box(modifier = Modifier.wrapContentWidth()) {
+                // 장교 메시지: 권위 펄스 효과 (배경)
+                if (showOfficerEffects) {
+                    AuthorityPulseEffect(
+                        enabled = true,
+                        modifier = Modifier.matchParentSize()
                     )
                 }
 
-                MessageTextWithEmoji(
-                    text = message.message,
-                    fontSize = 14.sp,
-                    lineHeight = 22.sp,
-                    color = if (isMine) BackgroundBlack else ForegroundWhite,
-                    isMine = isMine
-                )
+                // Message Bubble
+                Box(
+                    modifier = Modifier
+                        .widthIn(max = 240.dp)
+                        .clip(bubbleShape)
+                        .background(if (isMine) EliteGreen else CardBlack)
+                        .then(
+                            when {
+                                // 부사관 내 메시지: 번개 테두리
+                                isMine && isNcoRank -> Modifier.lightningBorder(enabled = true)
+                                // 장교 타인 메시지: 금색 테두리
+                                showOfficerEffects -> Modifier.border(1.5.dp, Color(0xFFFFD700).copy(alpha = 0.6f), bubbleShape)
+                                // 타인 메시지: 기본 테두리
+                                !isMine -> Modifier.border(1.dp, EliteGreen.copy(alpha = 0.2f), bubbleShape)
+                                else -> Modifier
+                            }
+                        )
+                        .combinedClickable(
+                            onClick = { if (showReactionPicker) showReactionPicker = false },
+                            onLongClick = { showReactionPicker = true }
+                        )
+                        .padding(12.dp)
+                ) {
+                    MessageTextWithEmoji(
+                        text = message.message,
+                        fontSize = 14.sp,
+                        lineHeight = 22.sp,
+                        color = if (isMine) BackgroundBlack else ForegroundWhite,
+                        isMine = isMine
+                    )
+                }
+
+                // 장교 메시지: 도착 충격파 효과
+                if (triggerShockwave) {
+                    ArrivalShockwaveEffect(
+                        trigger = true,
+                        onComplete = { triggerShockwave = false },
+                        modifier = Modifier.matchParentSize()
+                    )
+                }
             }
 
             // 타인 메시지: 리액션이 오른쪽에
@@ -1786,6 +1774,12 @@ private fun MessageInputSection(
     val hasText = value.isNotBlank()
     val canUseEmoji = RankEmoji.canUseEmoji(currentRank)
 
+    // 부사관 이펙트 활성화 여부 (하사~원사)
+    val isNcoRank = RankEffect.canUseNcoEffects(currentRank)
+
+    // 전송 버스트 이펙트 트리거
+    var showSendBurst by remember { mutableStateOf(false) }
+
     Surface(
         modifier = modifier.fillMaxWidth(),
         color = CardBlack.copy(alpha = 0.5f)  // v0: bg-card/50
@@ -1827,47 +1821,82 @@ private fun MessageInputSection(
                 }
 
                 // v0: Input flex-1 bg-input border-border/50
-                OutlinedTextField(
-                    value = value,
-                    onValueChange = onValueChange,
-                    modifier = Modifier.weight(1f),
-                    placeholder = {
-                        Text(
-                            text = if (canUseEmoji) "메시지를 입력하십시오..."
-                                   else "하사 이상부터 이모지 사용 가능",
-                            color = ForegroundMuted,
-                            fontSize = 14.sp
-                        )
-                    },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = EliteGreen,
-                        unfocusedBorderColor = BorderMuted.copy(alpha = 0.5f),
-                        cursorColor = EliteGreen,
-                        focusedTextColor = ForegroundWhite,
-                        unfocusedTextColor = ForegroundWhite,
-                        focusedContainerColor = MutedBlack,
-                        unfocusedContainerColor = MutedBlack
-                    ),
-                    shape = RoundedCornerShape(8.dp),
-                    singleLine = false,
-                    maxLines = 4,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default)
-                )
+                Box(modifier = Modifier.weight(1f)) {
+                    OutlinedTextField(
+                        value = value,
+                        onValueChange = onValueChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = {
+                            Text(
+                                text = if (canUseEmoji) "메시지를 입력하십시오..."
+                                       else "하사 이상부터 이모지 사용 가능",
+                                color = ForegroundMuted,
+                                fontSize = 14.sp
+                            )
+                        },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = if (isNcoRank) Color(0xFF00BFFF) else EliteGreen,
+                            unfocusedBorderColor = if (isNcoRank) Color(0xFF00BFFF).copy(alpha = 0.5f) else BorderMuted.copy(alpha = 0.5f),
+                            cursorColor = if (isNcoRank) Color(0xFF00BFFF) else EliteGreen,
+                            focusedTextColor = ForegroundWhite,
+                            unfocusedTextColor = ForegroundWhite,
+                            focusedContainerColor = MutedBlack,
+                            unfocusedContainerColor = MutedBlack
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        singleLine = false,
+                        maxLines = 4,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default)
+                    )
+
+                    // 부사관 이상: 타이핑 스파크 이펙트 (레이아웃에 영향 없이 오버레이)
+                    if (isNcoRank && hasText) {
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()  // 레이아웃에 영향 없이 부모 크기만큼
+                        ) {
+                            TypingSparkEffect(
+                                isTyping = true,
+                                textLength = value.length,
+                                modifier = Modifier.align(Alignment.CenterEnd)
+                            )
+                        }
+                    }
+                }
 
                 // Send Button (v0: Button size="icon" bg-primary)
-                IconButton(
-                    onClick = onSend,
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(EliteGreen)  // v0: bg-primary always
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Send,
-                        contentDescription = "전송",
-                        tint = BackgroundBlack,  // v0: text-primary-foreground
-                        modifier = Modifier.size(16.dp)  // v0: w-4 h-4
-                    )
+                Box {
+                    IconButton(
+                        onClick = {
+                            if (isNcoRank && hasText) {
+                                showSendBurst = true
+                            }
+                            onSend()
+                        },
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(EliteGreen)  // v0: bg-primary always
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Send,
+                            contentDescription = "전송",
+                            tint = BackgroundBlack,  // v0: text-primary-foreground
+                            modifier = Modifier.size(16.dp)  // v0: w-4 h-4
+                        )
+                    }
+
+                    // 부사관: 전송 버스트 이펙트
+                    if (showSendBurst) {
+                        SendBurstEffect(
+                            trigger = true,
+                            onComplete = { showSendBurst = false },
+                            modifier = Modifier
+                                .size(100.dp)
+                                .align(Alignment.Center)
+                                .offset(x = (-26).dp, y = 0.dp)
+                        )
+                    }
                 }
             }
 
@@ -3437,18 +3466,11 @@ private fun getTimeAgo(timestamp: Long): String {
 private fun EmojiPickerSheet(
     currentRank: EliteRank,
     onEmojiSelected: (RankEmoji.EmojiItem) -> Unit,
-    onEffectSelected: (RankEffect.EffectType) -> Unit = {},
-    myBubbleEffect: RankEffect.EffectType? = null,
-    myBubbleEffectExpiry: Long = 0L,
     onDismiss: () -> Unit
 ) {
     val availableEmojis = RankEmoji.getAvailableEmojis(currentRank)
     val allEmojis = RankEmoji.getAllEmojis()
-    val availableEffects = RankEffect.getAvailableEffects(currentRank)
     val sheetState = rememberModalBottomSheetState()
-
-    // 탭 상태: 0 = 이모지, 1 = 이펙트
-    var selectedTab by remember { mutableIntStateOf(0) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -3469,31 +3491,12 @@ private fun EmojiPickerSheet(
                 )
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // 탭 버튼
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    // 이모지 탭
-                    TabButton(
-                        text = "이모지",
-                        icon = "😀",
-                        isSelected = selectedTab == 0,
-                        onClick = { selectedTab = 0 },
-                        modifier = Modifier.weight(1f)
-                    )
-                    // 이펙트 탭
-                    TabButton(
-                        text = "이펙트",
-                        icon = "⚡",
-                        isSelected = selectedTab == 1,
-                        onClick = { selectedTab = 1 },
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-
+                Text(
+                    text = "이모지",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = ForegroundWhite
+                )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = "현재 계급: ${currentRank.koreanName}",
@@ -3510,281 +3513,45 @@ private fun EmojiPickerSheet(
                 .padding(horizontal = 16.dp)
                 .padding(bottom = 32.dp)
         ) {
-            when (selectedTab) {
-                0 -> {
-                    // 이모지 탭 내용
-                    // 부사관 이모지 (ID: 1~15)
-                    EmojiSection(
-                        title = "부사관 이모지",
-                        titleColor = Color(0xFF3B82F6),
-                        emojis = allEmojis.filter { it.id in 1..15 },
-                        availableEmojis = availableEmojis,
-                        onEmojiSelected = onEmojiSelected
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // 장교 이모지 (ID: 101~199)
-                    val coEmojis = allEmojis.filter { it.id in 101..199 }
-                    if (coEmojis.isNotEmpty()) {
-                        EmojiSection(
-                            title = "장교 이모지",
-                            titleColor = Color(0xFF10B981),
-                            emojis = coEmojis,
-                            availableEmojis = availableEmojis,
-                            onEmojiSelected = onEmojiSelected,
-                            lockedMessage = if (currentRank.ordinal < EliteRank.SECOND_LIEUTENANT.ordinal)
-                                "소위 이상 사용 가능" else null
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                    }
-
-                    // 영관급 이모지 (ID: 201~300) - 추후 추가
-                    val foEmojis = allEmojis.filter { it.id in 201..300 }
-                    if (foEmojis.isNotEmpty()) {
-                        EmojiSection(
-                            title = "영관급 이모지",
-                            titleColor = Color(0xFF7C3AED),
-                            emojis = foEmojis,
-                            availableEmojis = availableEmojis,
-                            onEmojiSelected = onEmojiSelected,
-                            lockedMessage = if (currentRank.ordinal < EliteRank.MAJOR.ordinal)
-                                "소령 이상 사용 가능" else null
-                        )
-                    }
-                }
-                1 -> {
-                    // 이펙트 탭 내용
-                    // 현재 활성 이펙트 표시
-                    val currentTime = System.currentTimeMillis()
-                    val remainingMs = if (myBubbleEffect != null && myBubbleEffectExpiry > currentTime) {
-                        myBubbleEffectExpiry - currentTime
-                    } else 0L
-                    val remainingSec = (remainingMs / 1000).toInt()
-                    val remainingMin = remainingSec / 60
-                    val remainingSecInMin = remainingSec % 60
-
-                    if (myBubbleEffect != null && remainingMs > 0) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(
-                                    EliteGreen.copy(alpha = 0.1f),
-                                    RoundedCornerShape(8.dp)
-                                )
-                                .padding(12.dp),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "${myBubbleEffect.emoji} ${myBubbleEffect.displayName} 활성 중 (${remainingMin}:${String.format("%02d", remainingSecInMin)} 남음)",
-                                fontSize = 14.sp,
-                                color = EliteGreen
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(16.dp))
-                    }
-
-                    // 설명 텍스트
-                    Text(
-                        text = "이펙트를 선택하면 내 말풍선에 특수 효과가 적용됩니다",
-                        fontSize = 12.sp,
-                        color = ForegroundMuted,
-                        modifier = Modifier.padding(bottom = 12.dp)
-                    )
-
-                    // 부사관 이펙트
-                    val ncoEffects = RankEffect.EffectType.entries.filter { RankEffect.isNcoEffect(it) }
-                    EffectSection(
-                        title = "부사관 이펙트 (3분)",
-                        titleColor = Color(0xFF3B82F6),
-                        effects = ncoEffects,
-                        availableEffects = availableEffects,
-                        onEffectSelected = onEffectSelected,
-                        activeEffect = myBubbleEffect
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // 장교 이펙트
-                    val officerEffects = RankEffect.EffectType.entries.filter { RankEffect.isOfficerEffect(it) }
-                    EffectSection(
-                        title = "장교 이펙트 (5분)",
-                        titleColor = Color(0xFF10B981),
-                        effects = officerEffects,
-                        availableEffects = availableEffects,
-                        onEffectSelected = onEffectSelected,
-                        activeEffect = myBubbleEffect,
-                        lockedMessage = if (currentRank.ordinal < EliteRank.SECOND_LIEUTENANT.ordinal)
-                            "소위 이상 사용 가능" else null
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun TabButton(
-    text: String,
-    icon: String,
-    isSelected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
-            .clickable { onClick() },
-        color = if (isSelected) EliteGreen.copy(alpha = 0.2f) else Color.Transparent,
-        shape = RoundedCornerShape(8.dp),
-        border = if (isSelected) {
-            androidx.compose.foundation.BorderStroke(1.dp, EliteGreen)
-        } else {
-            androidx.compose.foundation.BorderStroke(1.dp, BorderMuted)
-        }
-    ) {
-        Row(
-            modifier = Modifier.padding(vertical = 10.dp, horizontal = 16.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(text = icon, fontSize = 16.sp)
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(
-                text = text,
-                fontSize = 14.sp,
-                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                color = if (isSelected) EliteGreen else ForegroundMuted
+            // 부사관 이모지 (ID: 1~15)
+            EmojiSection(
+                title = "부사관 이모지",
+                titleColor = Color(0xFF3B82F6),
+                emojis = allEmojis.filter { it.id in 1..15 },
+                availableEmojis = availableEmojis,
+                onEmojiSelected = onEmojiSelected
             )
-        }
-    }
-}
+            Spacer(modifier = Modifier.height(16.dp))
 
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun EffectSection(
-    title: String,
-    titleColor: Color,
-    effects: List<RankEffect.EffectType>,
-    availableEffects: List<RankEffect.EffectType>,
-    onEffectSelected: (RankEffect.EffectType) -> Unit,
-    activeEffect: RankEffect.EffectType? = null,
-    lockedMessage: String? = null
-) {
-    Column {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = title,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = titleColor
-            )
-            if (lockedMessage != null) {
-                Text(
-                    text = "🔒 $lockedMessage",
-                    fontSize = 11.sp,
-                    color = ForegroundMuted
+            // 장교 이모지 (ID: 101~199)
+            val coEmojis = allEmojis.filter { it.id in 101..199 }
+            if (coEmojis.isNotEmpty()) {
+                EmojiSection(
+                    title = "장교 이모지",
+                    titleColor = Color(0xFF10B981),
+                    emojis = coEmojis,
+                    availableEmojis = availableEmojis,
+                    onEmojiSelected = onEmojiSelected,
+                    lockedMessage = if (currentRank.ordinal < EliteRank.SECOND_LIEUTENANT.ordinal)
+                        "소위 이상 사용 가능" else null
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+
+            // 영관급 이모지 (ID: 201~300) - 추후 추가
+            val foEmojis = allEmojis.filter { it.id in 201..300 }
+            if (foEmojis.isNotEmpty()) {
+                EmojiSection(
+                    title = "영관급 이모지",
+                    titleColor = Color(0xFF7C3AED),
+                    emojis = foEmojis,
+                    availableEmojis = availableEmojis,
+                    onEmojiSelected = onEmojiSelected,
+                    lockedMessage = if (currentRank.ordinal < EliteRank.MAJOR.ordinal)
+                        "소령 이상 사용 가능" else null
                 )
             }
         }
-        Spacer(modifier = Modifier.height(8.dp))
-
-        FlowRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            effects.forEach { effect ->
-                val isAvailable = availableEffects.contains(effect)
-                val isActive = activeEffect == effect
-                EffectButton(
-                    effect = effect,
-                    isAvailable = isAvailable,
-                    isActive = isActive,
-                    onClick = { if (isAvailable) onEffectSelected(effect) }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun EffectButton(
-    effect: RankEffect.EffectType,
-    isAvailable: Boolean,
-    isActive: Boolean,
-    onClick: () -> Unit
-) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Box(
-            modifier = Modifier
-                .size(56.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(
-                    when {
-                        isActive -> EliteGreen.copy(alpha = 0.3f)
-                        isAvailable -> MutedBlack
-                        else -> MutedBlack.copy(alpha = 0.3f)
-                    }
-                )
-                .then(
-                    if (isActive) Modifier.border(2.dp, EliteGreen, RoundedCornerShape(12.dp))
-                    else Modifier
-                )
-                .then(
-                    if (isAvailable) Modifier.clickable { onClick() }
-                    else Modifier
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = effect.emoji,
-                fontSize = 28.sp,
-                modifier = Modifier.graphicsLayer {
-                    alpha = if (isAvailable) 1f else 0.4f
-                }
-            )
-            if (!isAvailable) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.5f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "🔒",
-                        fontSize = 16.sp
-                    )
-                }
-            } else if (isActive) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .offset(x = 4.dp, y = (-4).dp)
-                        .size(16.dp)
-                        .clip(CircleShape)
-                        .background(EliteGreen),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "✓",
-                        fontSize = 10.sp,
-                        color = BackgroundBlack
-                    )
-                }
-            }
-        }
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = effect.displayName,
-            fontSize = 10.sp,
-            color = if (isActive) EliteGreen else if (isAvailable) ForegroundMuted else ForegroundMuted.copy(alpha = 0.5f)
-        )
     }
 }
 

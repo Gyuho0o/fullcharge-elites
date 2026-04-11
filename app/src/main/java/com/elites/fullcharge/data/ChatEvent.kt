@@ -45,6 +45,13 @@ sealed class ChatEvent {
     data class ComboAchieved(
         val count: Int
     ) : ChatEvent()
+
+    // 장교 이펙트 이벤트
+    data class OfficerEntered(
+        val userId: String,
+        val nickname: String,
+        val rank: EliteRank
+    ) : ChatEvent()
 }
 
 /**

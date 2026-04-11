@@ -76,10 +76,7 @@ data class MainUiState(
     // 차단한 사용자 ID 목록 (신고한 사용자)
     val blockedUserIds: Set<String> = emptySet(),
     // 충전 통계 (게이트키퍼 화면용)
-    val chargingStats: ElitePreferences.ChargingStats = ElitePreferences.ChargingStats(),
-    // 버블 이펙트 관련
-    val myBubbleEffect: RankEffect.EffectType? = null,
-    val myBubbleEffectExpiry: Long = 0L
+    val chargingStats: ElitePreferences.ChargingStats = ElitePreferences.ChargingStats()
 ) {
     companion object {
         const val DANGER_COUNTDOWN_SECONDS = 10  // 10초 카운트다운
@@ -104,6 +101,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var connectionMonitorJob: Job? = null
     private var messageObserverJob: Job? = null
     private var onlineUsersObserverJob: Job? = null
+    private var officerEventsObserverJob: Job? = null
 
     // 시간 기반 이벤트 추적
     private var lastCheckedHour = -1
@@ -349,11 +347,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             // 연속 접속 스트릭 업데이트
             preferences.updateLoginStreak()
 
+            // 세션 시간 즉시 계산 (이펙트 바로 적용)
+            val initialDuration = System.currentTimeMillis() - sessionStartTime
+
             _uiState.update {
                 it.copy(
                     currentScreen = AppScreen.CHAT,
                     isInChat = true,
-                    sessionStartTime = sessionStartTime
+                    sessionStartTime = sessionStartTime,
+                    sessionDuration = initialDuration
                 )
             }
 
@@ -362,6 +364,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             // 온라인 사용자 관찰 시작
             startOnlineUsersObservation()
+
+            // 장교 입장 이벤트 관찰 시작
+            startOfficerEventsObservation()
 
             // 세션 타이머 시작
             startSessionTimer()
@@ -380,6 +385,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             // 백그라운드 서비스 시작 (온라인 상태 유지)
             startBackgroundService(sessionStartTime)
+
+            // 장교(소위 이상)인 경우 입장 이벤트 발송 (즉시)
+            emitOfficerEntranceEvent()
         }
     }
 
@@ -438,6 +446,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             // 온라인 사용자 관찰 시작
             startOnlineUsersObservation()
 
+            // 장교 입장 이벤트 관찰 시작
+            startOfficerEventsObservation()
+
             // 세션 타이머 시작
             startSessionTimer()
 
@@ -455,6 +466,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             // 백그라운드 서비스 시작 (온라인 상태 유지)
             startBackgroundService(adjustedStartTime)
+
+            // 장교(소위 이상)인 경우 입장 이벤트 발송 (복구 모드는 즉시 발송)
+            emitOfficerEntranceEvent()
         }
     }
 
@@ -566,6 +580,44 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                 _uiState.update { it.copy(onlineUsers = usersWithSelf, onlineUsersLoaded = true) }
             }
+        }
+    }
+
+    /**
+     * 장교 입장 이벤트 관찰 시작
+     * 다른 장교가 입장하면 EntranceTakeoverOverlay 표시
+     */
+    private fun startOfficerEventsObservation() {
+        officerEventsObserverJob?.cancel()
+        officerEventsObserverJob = viewModelScope.launch {
+            val state = _uiState.value
+            chatRepository.getOfficerEntranceEvents(state.userId).collect { event ->
+                // 장교 입장 이벤트 표시
+                _uiState.update { it.copy(latestChatEvent = event) }
+            }
+        }
+    }
+
+    /**
+     * 장교 입장 이벤트 발송 (장교가 입장할 때 호출)
+     */
+    private suspend fun emitOfficerEntranceEvent() {
+        val state = _uiState.value
+        // sessionStartTime 기반으로 즉시 계급 계산 (sessionDuration 업데이트 대기 불필요)
+        val duration = if (state.sessionStartTime > 0) {
+            System.currentTimeMillis() - state.sessionStartTime
+        } else {
+            state.sessionDuration
+        }
+        val currentRank = EliteRank.fromDuration(duration)
+
+        // 장교(소위 이상)인 경우에만 이벤트 발송
+        if (RankEffect.canUseOfficerEffects(currentRank)) {
+            chatRepository.broadcastOfficerEntrance(
+                userId = state.userId,
+                nickname = state.nickname,
+                rank = currentRank
+            )
         }
     }
 
@@ -755,86 +807,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // ========== 버블 이펙트 관련 ==========
-
-    private var bubbleEffectExpiryJob: Job? = null
-
-    /**
-     * 버블 이펙트 활성화
-     * 사용자의 말풍선에 일정 시간 동안 이펙트가 표시됨
-     */
-    fun activateBubbleEffect(effectType: RankEffect.EffectType) {
-        val state = _uiState.value
-        val currentRank = EliteRank.fromDuration(state.sessionDuration)
-
-        // 이펙트 사용 가능 여부 확인
-        if (!RankEffect.canUseEffectType(currentRank, effectType)) {
-            _uiState.update { it.copy(filterErrorMessage = "이 이펙트를 사용할 수 없는 계급입니다") }
-            return
-        }
-
-        // 이미 활성화된 버블 이펙트가 있으면 교체
-        val currentTime = System.currentTimeMillis()
-        val expiry = currentTime + effectType.durationMs
-
-        viewModelScope.launch {
-            // Firebase에 버블 이펙트 활성화
-            chatRepository.activateBubbleEffect(state.userId, effectType)
-
-            // 로컬 상태 업데이트
-            _uiState.update {
-                it.copy(
-                    myBubbleEffect = effectType,
-                    myBubbleEffectExpiry = expiry
-                )
-            }
-
-            // 만료 타이머 시작
-            startBubbleEffectExpiryTimer(effectType.durationMs)
-        }
-    }
-
-    /**
-     * 버블 이펙트 비활성화
-     */
-    fun deactivateBubbleEffect() {
-        bubbleEffectExpiryJob?.cancel()
-
-        viewModelScope.launch {
-            val state = _uiState.value
-            chatRepository.deactivateBubbleEffect(state.userId)
-
-            _uiState.update {
-                it.copy(
-                    myBubbleEffect = null,
-                    myBubbleEffectExpiry = 0L
-                )
-            }
-        }
-    }
-
-    private fun startBubbleEffectExpiryTimer(durationMs: Long) {
-        bubbleEffectExpiryJob?.cancel()
-        bubbleEffectExpiryJob = viewModelScope.launch {
-            delay(durationMs)
-            // 이펙트 만료
-            _uiState.update {
-                it.copy(
-                    myBubbleEffect = null,
-                    myBubbleEffectExpiry = 0L
-                )
-            }
-        }
-    }
-
-    /**
-     * 사용자의 버블 이펙트 타입 가져오기 (메시지 렌더링용)
-     * onlineUsers에서 해당 userId의 버블 이펙트 정보를 조회
-     */
-    fun getBubbleEffectForUser(userId: String): RankEffect.EffectType? {
-        val user = _uiState.value.onlineUsers.find { it.userId == userId }
-        return user?.activeBubbleEffect
-    }
 
     fun setReplyingTo(message: ChatMessage) {
         _uiState.update { it.copy(replyingTo = message) }
@@ -1040,7 +1012,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             messageObserverJob?.cancel()
             onlineUsersObserverJob?.cancel()
             joinLeaveIndicatorJob?.cancel()
-            bubbleEffectExpiryJob?.cancel()
+            officerEventsObserverJob?.cancel()
 
             // 백그라운드 서비스 종료 (정상 종료이므로 퇴장 메시지 없음)
             stopBackgroundServiceGracefully()

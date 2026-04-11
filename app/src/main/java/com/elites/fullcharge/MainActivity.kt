@@ -225,9 +225,7 @@ class MainActivity : ComponentActivity() {
                                 onRewarded = { viewModel.extendDangerCountdown() },
                                 onAdDismissed = { /* 광고 닫힌 후 추가 작업 없음 */ }
                             )
-                        },
-                        // 버블 이펙트 관련
-                        onActivateBubbleEffect = { effectType -> viewModel.activateBubbleEffect(effectType) }
+                        }
                     )
                     }
                 }
@@ -274,9 +272,7 @@ class MainActivity : ComponentActivity() {
         blockedUserIds: Set<String>,
         onBlockUser: (String) -> Unit,
         onUnblockUser: (String) -> Unit,
-        onRequestSupply: () -> Unit,
-        // 버블 이펙트 관련
-        onActivateBubbleEffect: (com.elites.fullcharge.data.RankEffect.EffectType) -> Unit
+        onRequestSupply: () -> Unit
     ) {
         AnimatedContent(
             targetState = uiState.currentScreen,
@@ -381,11 +377,7 @@ class MainActivity : ComponentActivity() {
                         // 실시간 합류/퇴장 카운트
                         recentJoinCount = uiState.recentJoinCount,
                         recentLeaveCount = uiState.recentLeaveCount,
-                        showJoinLeaveIndicator = uiState.showJoinLeaveIndicator,
-                        // 버블 이펙트 관련
-                        onActivateBubbleEffect = onActivateBubbleEffect,
-                        myBubbleEffect = uiState.myBubbleEffect,
-                        myBubbleEffectExpiry = uiState.myBubbleEffectExpiry
+                        showJoinLeaveIndicator = uiState.showJoinLeaveIndicator
                     )
                 }
                 AppScreen.EXILE -> {

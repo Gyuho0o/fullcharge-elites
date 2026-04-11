@@ -156,9 +156,7 @@ data class EliteUser(
     val sessionStartTime: Long = 0L,
     val lastActiveTime: Long = System.currentTimeMillis(),
     val isOnline: Boolean = true,
-    val isAdmin: Boolean = false,
-    val bubbleEffectId: String? = null,
-    val bubbleEffectExpiry: Long = 0L
+    val isAdmin: Boolean = false
 ) {
     val sessionDuration: Long
         get() = if (sessionStartTime > 0) {
@@ -171,13 +169,13 @@ data class EliteUser(
     val formattedDuration: String
         get() = EliteRank.fromDurationFormatted(sessionDuration)
 
-    /** 버블 이펙트가 현재 활성 상태인지 확인 */
-    val hasBubbleEffect: Boolean
-        get() = bubbleEffectId != null && bubbleEffectExpiry > System.currentTimeMillis()
+    /** 부사관 계급 여부 (하사~원사) */
+    val isNcoRank: Boolean
+        get() = RankEffect.isNcoRank(rank)
 
-    /** 활성 버블 이펙트 타입 반환 */
-    val activeBubbleEffect: RankEffect.EffectType?
-        get() = if (hasBubbleEffect) RankEffect.EffectType.fromId(bubbleEffectId ?: "") else null
+    /** 장교 계급 여부 (소위~대장) */
+    val isOfficerRank: Boolean
+        get() = RankEffect.isOfficerRank(rank)
 }
 
 /**

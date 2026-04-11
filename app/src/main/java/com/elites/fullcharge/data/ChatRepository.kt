@@ -22,6 +22,7 @@ class ChatRepository {
     private val effectsRef: DatabaseReference = database.getReference("effects")
     private val tokensRef: DatabaseReference = database.getReference("fcm_tokens")
     private val connectedRef: DatabaseReference = database.getReference(".info/connected")
+    private val officerEventsRef: DatabaseReference = database.getReference("officer_events")
 
     // Firebase에서 가져올 메시지 수 (시스템 메시지 포함이므로 넉넉하게)
     // 실제 표시되는 사용자 메시지는 필터링 후 결정
@@ -275,31 +276,6 @@ class ChatRepository {
         messagesRef.child(key).setValue(message.toMap()).await()
     }
 
-    /**
-     * 버블 이펙트 활성화
-     * 사용자의 bubbleEffectId와 bubbleEffectExpiry를 설정하여
-     * 해당 사용자의 모든 메시지에 버블 이펙트가 표시되도록 함
-     */
-    suspend fun activateBubbleEffect(userId: String, effectType: RankEffect.EffectType) {
-        val expiry = System.currentTimeMillis() + effectType.durationMs
-        val updates = mapOf(
-            "bubbleEffectId" to effectType.id,
-            "bubbleEffectExpiry" to expiry
-        )
-        usersRef.child(userId).updateChildren(updates).await()
-    }
-
-    /**
-     * 버블 이펙트 비활성화
-     */
-    suspend fun deactivateBubbleEffect(userId: String) {
-        val updates = mapOf<String, Any?>(
-            "bubbleEffectId" to null,
-            "bubbleEffectExpiry" to 0L
-        )
-        usersRef.child(userId).updateChildren(updates).await()
-    }
-
     fun getOnlineUsers(): Flow<List<EliteUser>> = callbackFlow {
         val listener = object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
@@ -311,17 +287,13 @@ class ChatRepository {
                         val lastActiveTime = child.child("lastActiveTime").getValue(Long::class.java) ?: 0L
                         val isOnline = child.child("isOnline").getValue(Boolean::class.java) ?: false
                         val isAdmin = child.child("isAdmin").getValue(Boolean::class.java) ?: false
-                        val bubbleEffectId = child.child("bubbleEffectId").getValue(String::class.java)
-                        val bubbleEffectExpiry = child.child("bubbleEffectExpiry").getValue(Long::class.java) ?: 0L
                         EliteUser(
                             userId = oderId,
                             nickname = nickname,
                             sessionStartTime = sessionStartTime,
                             lastActiveTime = lastActiveTime,
                             isOnline = isOnline,
-                            isAdmin = isAdmin,
-                            bubbleEffectId = bubbleEffectId,
-                            bubbleEffectExpiry = bubbleEffectExpiry
+                            isAdmin = isAdmin
                         )
                     } catch (e: Exception) {
                         null
@@ -924,6 +896,85 @@ class ChatRepository {
             reportsRef.child(reportId).removeValue().await()
         } catch (e: Exception) {
             e.printStackTrace()
+        }
+    }
+
+    // ========== 장교 이펙트 이벤트 ==========
+
+    /**
+     * 장교 입장 이벤트 발송
+     * 장교(소위 이상)가 채팅방에 입장하면 다른 사용자에게 알림
+     */
+    suspend fun broadcastOfficerEntrance(
+        userId: String,
+        nickname: String,
+        rank: EliteRank
+    ) {
+        try {
+            val eventId = officerEventsRef.push().key ?: return
+            val event = mapOf(
+                "type" to "OFFICER_ENTERED",
+                "userId" to userId,
+                "nickname" to nickname,
+                "rank" to rank.name,
+                "timestamp" to com.google.firebase.database.ServerValue.TIMESTAMP
+            )
+            officerEventsRef.child(eventId).setValue(event).await()
+
+            // 5초 후 자동 삭제 (데이터 누적 방지)
+            kotlinx.coroutines.delay(5000)
+            try {
+                officerEventsRef.child(eventId).removeValue().await()
+            } catch (e: Exception) {
+                // 삭제 실패는 무시
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    /**
+     * 장교 입장 이벤트 수신 Flow
+     * 새로운 장교 입장 이벤트를 실시간으로 수신
+     */
+    fun getOfficerEntranceEvents(currentUserId: String): Flow<ChatEvent.OfficerEntered> = callbackFlow {
+        val listener = object : ChildEventListener {
+            override fun onChildAdded(snapshot: DataSnapshot, previousChildName: String?) {
+                try {
+                    val type = snapshot.child("type").getValue(String::class.java)
+                    if (type != "OFFICER_ENTERED") return
+
+                    val oderId = snapshot.child("userId").getValue(String::class.java) ?: return
+                    // 자신의 입장은 무시
+                    if (oderId == currentUserId) return
+
+                    val nickname = snapshot.child("nickname").getValue(String::class.java) ?: return
+                    val rankName = snapshot.child("rank").getValue(String::class.java) ?: return
+                    val rank = try {
+                        EliteRank.valueOf(rankName)
+                    } catch (e: Exception) {
+                        return
+                    }
+
+                    trySend(ChatEvent.OfficerEntered(oderId, nickname, rank))
+                } catch (e: Exception) {
+                    // 파싱 실패 무시
+                }
+            }
+
+            override fun onChildChanged(snapshot: DataSnapshot, previousChildName: String?) {}
+            override fun onChildRemoved(snapshot: DataSnapshot) {}
+            override fun onChildMoved(snapshot: DataSnapshot, previousChildName: String?) {}
+            override fun onCancelled(error: DatabaseError) {}
+        }
+
+        // 최근 이벤트만 수신 (5초 이내)
+        val recentTime = System.currentTimeMillis() - 5000
+        val query = officerEventsRef.orderByChild("timestamp").startAt(recentTime.toDouble())
+        query.addChildEventListener(listener)
+
+        awaitClose {
+            query.removeEventListener(listener)
         }
     }
 }
