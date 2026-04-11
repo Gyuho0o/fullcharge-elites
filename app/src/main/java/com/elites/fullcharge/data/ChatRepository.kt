@@ -487,17 +487,23 @@ class ChatRepository {
         disconnectMessageKey = null
     }
 
-    suspend fun leaveChat(userId: String, wasAdmin: Boolean = false, wasExiled: Boolean = false) {
+    suspend fun leaveChat(
+        userId: String,
+        wasAdmin: Boolean = false,
+        wasExiled: Boolean = false,
+        restoreSessionStartTime: Long? = null  // 관리자 퇴장 시 원래 세션 복원용
+    ) {
         // 정상 종료 시 onDisconnect 핸들러 취소
         cancelDisconnectHandlers(userId)
 
         when {
             wasAdmin -> {
-                // 관리자 세션 종료 시 세션 데이터 완전 초기화
+                // 관리자 세션 종료 시 원래 세션으로 복원 (있는 경우)
+                val sessionTimeToRestore = restoreSessionStartTime ?: 0L
                 usersRef.child(userId).updateChildren(mapOf(
                     "isOnline" to false,
                     "isAdmin" to false,
-                    "sessionStartTime" to 0L
+                    "sessionStartTime" to sessionTimeToRestore
                 )).await()
             }
             wasExiled -> {
@@ -517,6 +523,18 @@ class ChatRepository {
         // 사용자 정보 클리어
         currentUserId = null
         currentNickname = null
+    }
+
+    /**
+     * 사용자의 현재 sessionStartTime 조회
+     */
+    suspend fun getUserSessionStartTime(userId: String): Long? {
+        return try {
+            val snapshot = usersRef.child(userId).child("sessionStartTime").get().await()
+            snapshot.getValue(Long::class.java)
+        } catch (e: Exception) {
+            null
+        }
     }
 
     suspend fun updateUserActivity(userId: String) {

@@ -103,6 +103,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var onlineUsersObserverJob: Job? = null
     private var officerEventsObserverJob: Job? = null
     private var sessionStartTimeObserverJob: Job? = null
+    private var originalSessionStartTimeBeforeAdmin: Long? = null  // 관리자 입장 전 원래 세션 시간
 
     // 시간 기반 이벤트 추적
     private var lastCheckedHour = -1
@@ -1028,8 +1029,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             // FCM 토큰 삭제
             unregisterFcmToken(state.userId)
 
-            // Firebase에서 퇴장 처리 (관리자였으면 세션 데이터 완전 초기화)
-            chatRepository.leaveChat(state.userId, wasAdmin = wasAdminMode)
+            // Firebase에서 퇴장 처리 (관리자였으면 원래 세션 복원)
+            chatRepository.leaveChat(
+                userId = state.userId,
+                wasAdmin = wasAdminMode,
+                restoreSessionStartTime = if (wasAdminMode) originalSessionStartTimeBeforeAdmin else null
+            )
+
+            // 관리자 세션 데이터 클리어
+            if (wasAdminMode) {
+                originalSessionStartTimeBeforeAdmin = null
+            }
 
             // 세션 종료
             preferences.endSession()
@@ -1404,6 +1414,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val state = _uiState.value
 
         viewModelScope.launch {
+            // 관리자 입장 전 원래 세션 시간 저장 (퇴장 시 복원용)
+            originalSessionStartTimeBeforeAdmin = chatRepository.getUserSessionStartTime(state.userId)
+
             // 관리자는 대장 계급으로 시작 (10080분 = 7일)
             val generalDuration = EliteRank.GENERAL.minMinutes * 60 * 1000L
             val adjustedStartTime = System.currentTimeMillis() - generalDuration
