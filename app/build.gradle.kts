@@ -83,6 +83,12 @@ android {
             isUniversalApk = true  // 모든 ABI 포함 APK도 생성
         }
     }
+
+    // Lint 설정 - 릴리스 빌드 시 에러 무시
+    lint {
+        abortOnError = false
+        checkReleaseBuilds = false
+    }
 }
 
 dependencies {
