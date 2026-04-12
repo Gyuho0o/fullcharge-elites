@@ -90,9 +90,9 @@ exports.sendChatNotification = functions
       android: {
         priority: "high",
         notification: {
-          channelId: "elite_chat_channel",
+          channelId: "elite_chat_silent_v2",
           priority: "high",
-          defaultSound: true,
+          defaultSound: false,
         },
       },
     };

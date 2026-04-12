@@ -45,6 +45,7 @@ import com.elites.fullcharge.ui.components.JoinLeaveIndicator
 import com.elites.fullcharge.ui.components.RankInsignia
 import com.elites.fullcharge.ui.components.TypingSparkEffect
 import com.elites.fullcharge.ui.hapticFeedback
+import com.elites.fullcharge.ui.typingSound
 import com.elites.fullcharge.ui.theme.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -1738,16 +1739,14 @@ private fun MessageInputSection(
     val context = androidx.compose.ui.platform.LocalContext.current
     val hasText = value.isNotBlank()
 
-    // 부사관/장교 계급 여부 (햅틱 피드백용)
-    val isNcoOrOfficer = RankEffect.canUseNcoEffects(currentRank)
-
     // 이전 텍스트 길이 추적 (새 글자 입력 감지용)
     var previousLength by remember { mutableStateOf(0) }
 
-    // 값이 바뀔 때 햅틱 피드백 처리
+    // 값이 바뀔 때 햅틱 피드백 + 타이핑 효과음 처리
     val wrappedOnValueChange: (String) -> Unit = { newValue ->
-        // 글자가 추가됐을 때만 햅틱 (삭제 시에는 안 함)
-        if (isNcoOrOfficer && newValue.length > previousLength) {
+        // 글자가 추가되거나 삭제됐을 때 효과
+        if (newValue.length != previousLength) {
+            context.typingSound()
             context.hapticFeedback()
         }
         previousLength = newValue.length
