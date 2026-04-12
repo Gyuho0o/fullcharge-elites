@@ -268,16 +268,19 @@ class ChatRepository {
 
     suspend fun sendSystemMessage(text: String) {
         val key = messagesRef.push().key ?: UUID.randomUUID().toString()
+        val timestamp = System.currentTimeMillis()
+        android.util.Log.d("ChatRepository", "시스템 메시지 전송 시작: $text, timestamp=$timestamp, joinedAt=$joinedAt")
         val message = ChatMessage(
             id = key,
             userId = "SYSTEM",
             nickname = "시스템",
             message = text,
-            timestamp = System.currentTimeMillis(),
+            timestamp = timestamp,
             rank = EliteRank.TRAINEE.name,
             isSystemMessage = true
         )
         messagesRef.child(key).setValue(message.toMap()).await()
+        android.util.Log.d("ChatRepository", "시스템 메시지 전송 완료: $text")
     }
 
     fun getOnlineUsers(): Flow<List<EliteUser>> = callbackFlow {

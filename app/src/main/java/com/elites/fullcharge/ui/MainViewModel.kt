@@ -1039,7 +1039,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             // 퇴장 시스템 메시지 전송 (관리자가 아닌 경우)
             if (!wasAdminMode) {
-                chatRepository.sendSystemMessage("${state.nickname} 전우가 퇴장했습니다")
+                try {
+                    chatRepository.sendSystemMessage("${state.nickname} 전우가 퇴장했습니다")
+                    android.util.Log.d("MainViewModel", "퇴장 메시지 전송 완료: ${state.nickname}")
+                } catch (e: Exception) {
+                    android.util.Log.e("MainViewModel", "퇴장 메시지 전송 실패", e)
+                }
             }
 
             // FCM 토큰 삭제
