@@ -153,8 +153,10 @@ fun ChatScreen(
             currentRank = currentRank,
             sessionDuration = sessionDuration,
             onConfirm = {
+                android.util.Log.d("ChatScreen", "나가기 확인 버튼 클릭됨")
                 showLeaveConfirmDialog = false
                 onLeaveChat()
+                android.util.Log.d("ChatScreen", "onLeaveChat 호출 완료")
             },
             onDismiss = { showLeaveConfirmDialog = false }
         )

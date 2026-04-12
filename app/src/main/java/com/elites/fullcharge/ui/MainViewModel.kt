@@ -1022,9 +1022,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun leaveChat() {
+        android.util.Log.d("MainViewModel", "leaveChat() 호출됨")
         viewModelScope.launch {
+            android.util.Log.d("MainViewModel", "leaveChat() 코루틴 시작")
             val state = _uiState.value
             val wasAdminMode = state.isAdminMode
+            android.util.Log.d("MainViewModel", "wasAdminMode=$wasAdminMode, nickname=${state.nickname}")
 
             // 관리자가 아닌 경우만 역대 기록 업데이트 및 세션 복구용 저장
             if (!wasAdminMode && state.sessionDuration > 0) {
