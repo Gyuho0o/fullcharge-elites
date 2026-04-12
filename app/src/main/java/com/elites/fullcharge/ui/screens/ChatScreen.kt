@@ -111,6 +111,7 @@ fun ChatScreen(
     recentJoinCount: Int = 0,
     recentLeaveCount: Int = 0,
     showJoinLeaveIndicator: Boolean = false,
+    onSendWelcomeMessage: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var messageInput by remember { mutableStateOf("") }
@@ -292,6 +293,9 @@ fun ChatScreen(
                         // 공지 메시지는 AnnouncementMessage로 표시
                         message.isSystemMessage && message.message.startsWith("[공지]") ->
                             AnnouncementMessage(message = message)
+                        // 합류 메시지는 터치하면 환영 메시지 전송
+                        message.isSystemMessage && message.message.contains("합류했습니다") ->
+                            JoinMessage(message = message, onTap = onSendWelcomeMessage)
                         // 일반 시스템 메시지
                         message.isSystemMessage -> SystemMessage(message = message)
                         else -> {
@@ -1240,10 +1244,13 @@ private fun RankingListItem(
 private fun SystemMessage(message: ChatMessage) {
     // 배신 메시지는 특별한 경고 디자인 적용
     val isBetrayalMessage = message.message.contains("배신했습니다")
+    // 강등 메시지는 주황색 경고 디자인 적용
+    val isDemotionMessage = message.message.contains("강등되었습니다")
 
-    if (isBetrayalMessage) {
-        BetrayalAlertMessage(message = message)
-    } else {
+    when {
+        isBetrayalMessage -> BetrayalAlertMessage(message = message)
+        isDemotionMessage -> DemotionAlertMessage(message = message)
+        else -> {
         // 일반 시스템 메시지
         Box(
             modifier = Modifier
@@ -1288,6 +1295,111 @@ private fun SystemMessage(message: ChatMessage) {
                     lineHeight = 18.sp
                 )
             }
+        }
+        }
+    }
+}
+
+// ===== JOIN MESSAGE =====
+// 합류 메시지 - 터치하면 환영 메시지 발송
+@Composable
+private fun JoinMessage(message: ChatMessage, onTap: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 12.dp)
+            .clickable { onTap() },
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Row(
+            modifier = Modifier
+                .wrapContentWidth()
+                .widthIn(max = 340.dp)
+                .clip(RoundedCornerShape(50))
+                .background(Color(0xFF2A2A2A))
+                .border(1.dp, EliteGreen.copy(alpha = 0.3f), RoundedCornerShape(50))
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            // 초록색 번개 아이콘
+            androidx.compose.foundation.Canvas(
+                modifier = Modifier.size(14.dp)
+            ) {
+                val w = size.width
+                val h = size.height
+                val path = androidx.compose.ui.graphics.Path().apply {
+                    moveTo(w * 0.55f, 0f)
+                    lineTo(w * 0.2f, h * 0.5f)
+                    lineTo(w * 0.45f, h * 0.5f)
+                    lineTo(w * 0.35f, h)
+                    lineTo(w * 0.8f, h * 0.4f)
+                    lineTo(w * 0.55f, h * 0.4f)
+                    lineTo(w * 0.7f, 0f)
+                    close()
+                }
+                drawPath(path, color = EliteGreen)
+            }
+            // 흰색 텍스트
+            Text(
+                text = message.message,
+                fontSize = 13.sp,
+                color = ForegroundWhite,
+                lineHeight = 18.sp
+            )
+            // 터치 힌트 아이콘
+            Text(
+                text = "👆",
+                fontSize = 12.sp
+            )
+        }
+        // 터치 힌트 텍스트
+        Text(
+            text = "터치하여 환영하기",
+            fontSize = 10.sp,
+            color = ForegroundMuted,
+            modifier = Modifier.padding(top = 4.dp)
+        )
+    }
+}
+
+// ===== DEMOTION ALERT MESSAGE =====
+// 강등 메시지 - 주황색 경고 디자인
+@Composable
+private fun DemotionAlertMessage(message: ChatMessage) {
+    val warningOrange = Color(0xFFFF9500)
+    val darkOrangeBg = Color(0xFF3D2A15)
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 12.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Row(
+            modifier = Modifier
+                .wrapContentWidth()
+                .widthIn(max = 340.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(darkOrangeBg)
+                .border(1.dp, warningOrange.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            // 하향 화살표 아이콘
+            Text(
+                text = "⬇",
+                fontSize = 14.sp,
+                color = warningOrange
+            )
+            // 주황색 텍스트
+            Text(
+                text = message.message,
+                fontSize = 13.sp,
+                color = warningOrange,
+                lineHeight = 18.sp
+            )
         }
     }
 }
@@ -2396,13 +2508,15 @@ private fun NicknameEditDialog(
             ) {
                 OutlinedTextField(
                     value = nickname,
-                    onValueChange = {
-                        if (it.length <= 10) {
-                            nickname = it
+                    onValueChange = { input ->
+                        // 띄어쓰기 제거 및 길이 제한
+                        val filtered = input.replace(" ", "").replace("\t", "").replace("\n", "")
+                        if (filtered.length <= 10) {
+                            nickname = filtered
                             errorMessage = null
                         }
                     },
-                    label = { Text("닉네임", color = ForegroundMuted) },
+                    label = { Text("닉네임 (띄어쓰기 불가)", color = ForegroundMuted) },
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = EliteGreen,
@@ -2436,11 +2550,12 @@ private fun NicknameEditDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    val trimmed = nickname.trim()
+                    // 공백 제거 후 검증
+                    val cleaned = nickname.replace(" ", "").replace("\t", "").replace("\n", "").trim()
                     when {
-                        trimmed.isEmpty() -> errorMessage = "닉네임을 입력해주세요"
-                        trimmed.length < 2 -> errorMessage = "2글자 이상 입력해주세요"
-                        else -> onConfirm(trimmed)
+                        cleaned.isEmpty() -> errorMessage = "닉네임을 입력해주세요"
+                        cleaned.length < 2 -> errorMessage = "2글자 이상 입력해주세요"
+                        else -> onConfirm(cleaned)
                     }
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = EliteGreen),
@@ -3726,49 +3841,85 @@ private fun MessageTextWithEmoji(
         return
     }
 
-    // 이모지가 있으면 FlowRow로 렌더링
-    androidx.compose.foundation.layout.FlowRow(
-        horizontalArrangement = Arrangement.Start,
-        verticalArrangement = Arrangement.Center
-    ) {
-        parts.forEach { part ->
-            when (part) {
-                is MessagePart.TextPart -> {
-                    Text(
-                        text = part.text,
-                        fontSize = fontSize,
-                        lineHeight = lineHeight,
-                        color = color
-                    )
-                }
-                is MessagePart.EmojiPart -> {
-                    val drawableResId = RankEmoji.getEmojiDrawableResId(part.emojiId)
-                    if (drawableResId != null) {
-                        val isOfficerEmoji = part.emojiId in 201..300
-                        // 부사관: 44dp (3개 1줄), 장교: 240dp (통일)
-                        val emojiSize = if (isOfficerEmoji) 240.dp else 44.dp
-                        val boxSize = if (isOfficerEmoji) 248.dp else 52.dp
+    // 줄바꿈을 기준으로 라인별로 분리
+    val lines = mutableListOf<MutableList<MessagePart>>()
+    var currentLine = mutableListOf<MessagePart>()
+    lines.add(currentLine)
 
-                        Box(
-                            modifier = Modifier
-                                .padding(horizontal = 2.dp)
-                                .size(boxSize)
-                                .clip(RoundedCornerShape(if (isOfficerEmoji) 12.dp else 6.dp))
-                                .background(
-                                    if (isMine) Color.Black.copy(alpha = 0.2f)
-                                    else Color.Transparent
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            androidx.compose.foundation.Image(
-                                painter = androidx.compose.ui.res.painterResource(id = drawableResId),
-                                contentDescription = "이모지",
-                                contentScale = androidx.compose.ui.layout.ContentScale.Fit,
-                                modifier = Modifier.size(emojiSize)
-                            )
+    parts.forEach { part ->
+        when (part) {
+            is MessagePart.TextPart -> {
+                // 텍스트 내 줄바꿈 처리
+                val textLines = part.text.split("\n")
+                textLines.forEachIndexed { index, lineText ->
+                    if (lineText.isNotEmpty()) {
+                        currentLine.add(MessagePart.TextPart(lineText))
+                    }
+                    // 마지막 줄이 아니면 새 라인 시작
+                    if (index < textLines.size - 1) {
+                        currentLine = mutableListOf()
+                        lines.add(currentLine)
+                    }
+                }
+            }
+            is MessagePart.EmojiPart -> {
+                currentLine.add(part)
+            }
+        }
+    }
+
+    // 각 라인을 FlowRow로 렌더링
+    Column {
+        lines.forEach { lineParts ->
+            if (lineParts.isNotEmpty()) {
+                androidx.compose.foundation.layout.FlowRow(
+                    horizontalArrangement = Arrangement.Start,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    lineParts.forEach { part ->
+                        when (part) {
+                            is MessagePart.TextPart -> {
+                                Text(
+                                    text = part.text,
+                                    fontSize = fontSize,
+                                    lineHeight = lineHeight,
+                                    color = color
+                                )
+                            }
+                            is MessagePart.EmojiPart -> {
+                                val drawableResId = RankEmoji.getEmojiDrawableResId(part.emojiId)
+                                if (drawableResId != null) {
+                                    val isOfficerEmoji = part.emojiId in 201..300
+                                    // 부사관: 44dp (3개 1줄), 장교: 240dp (통일)
+                                    val emojiSize = if (isOfficerEmoji) 240.dp else 44.dp
+                                    val boxSize = if (isOfficerEmoji) 248.dp else 52.dp
+
+                                    Box(
+                                        modifier = Modifier
+                                            .padding(horizontal = 2.dp)
+                                            .size(boxSize)
+                                            .clip(RoundedCornerShape(if (isOfficerEmoji) 12.dp else 6.dp))
+                                            .background(
+                                                if (isMine) Color.Black.copy(alpha = 0.2f)
+                                                else Color.Transparent
+                                            ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        androidx.compose.foundation.Image(
+                                            painter = androidx.compose.ui.res.painterResource(id = drawableResId),
+                                            contentDescription = "이모지",
+                                            contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+                                            modifier = Modifier.size(emojiSize)
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
+            } else {
+                // 빈 줄일 경우 간격 추가
+                Spacer(modifier = Modifier.height(lineHeight.value.dp * 0.5f))
             }
         }
     }

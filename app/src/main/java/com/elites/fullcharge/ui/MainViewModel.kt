@@ -326,7 +326,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         // "새로 시작" 선택 시 설정된 플래그 확인
         val actualForceNew = forceNewSession || shouldForceNewSession
+        val previousDurationForDemotion = forfeiredPreviousDuration  // 강등 메시지용
         shouldForceNewSession = false  // 플래그 리셋
+        forfeiredPreviousDuration = null  // 리셋
 
         viewModelScope.launch {
             val currentTime = System.currentTimeMillis()
@@ -348,9 +350,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             // FCM 토큰 등록
             registerFcmToken(state.userId)
 
-            // 입장 시스템 메시지 전송
-            chatRepository.sendSystemMessage("${state.nickname} 전우가 합류했습니다")
-
             // 세션 시작
             preferences.startSession()
 
@@ -369,8 +368,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
 
-            // 메시지 관찰 시작
+            // 메시지 관찰 먼저 시작 (입장 메시지가 리스너에 의해 수신되도록)
             startMessageObservation()
+
+            // 입장 시스템 메시지 전송 (메시지 관찰 시작 후 전송해야 자신의 입장 메시지도 표시됨)
+            chatRepository.sendSystemMessage("${state.nickname} 전우가 합류했습니다")
+
+            // 계급 복구 포기로 인한 강등 메시지 (새로 시작 선택 시)
+            if (actualForceNew && previousDurationForDemotion != null && previousDurationForDemotion > 0) {
+                val previousRank = EliteRank.fromDuration(previousDurationForDemotion)
+                chatRepository.sendSystemMessage("${state.nickname} 전우가 ${previousRank.koreanName}에서 훈련병으로 강등되었습니다")
+            }
 
             // 온라인 사용자 관찰 시작
             startOnlineUsersObservation()
@@ -427,9 +435,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 forceSessionStartTime = adjustedStartTime
             )
 
-            // 입장 시스템 메시지 전송
-            chatRepository.sendSystemMessage("${state.nickname} 전우가 합류했습니다")
-
             // 세션 시작 (조정된 시간으로)
             preferences.startSession()
 
@@ -453,8 +458,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
 
-            // 메시지 관찰 시작 (로컬 메시지 유지)
+            // 메시지 관찰 먼저 시작 (로컬 메시지 유지, 입장 메시지가 리스너에 의해 수신되도록)
             startMessageObservation(preserveLocalMessages = true)
+
+            // 입장 시스템 메시지 전송 (메시지 관찰 시작 후 전송해야 자신의 입장 메시지도 표시됨)
+            chatRepository.sendSystemMessage("${state.nickname} 전우가 합류했습니다")
 
             // 온라인 사용자 관찰 시작
             startOnlineUsersObservation()
@@ -490,12 +498,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // "새로 시작" 선택 시 다음 enterChat에서 새 세션 강제 시작
     private var shouldForceNewSession = false
+    // 복구 포기한 이전 세션 duration (강등 메시지용)
+    private var forfeiredPreviousDuration: Long? = null
 
     /**
      * 복구 가능한 세션 포기 (광고 안 보고 그냥 입장)
      */
     fun dismissRestorableSession() {
         shouldForceNewSession = true  // 다음 enterChat에서 새 세션 강제
+        // 현재 복구 가능한 세션 duration 저장 (강등 메시지용)
+        forfeiredPreviousDuration = _uiState.value.restorableSessionDuration
         viewModelScope.launch {
             preferences.clearRestorableSession()
         }
@@ -506,17 +518,35 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         messageObserverJob = viewModelScope.launch {
             chatRepository.getMessages().collect { firebaseMessages ->
                 _uiState.update { currentState ->
-                    // 현재 온라인 사용자 닉네임 목록
-                    val onlineNicknames = currentState.onlineUsers.map { it.nickname }.toSet()
+                    // 현재 온라인 사용자 닉네임 목록 (본인 제외)
+                    val myNickname = currentState.nickname
+                    val otherOnlineNicknames = currentState.onlineUsers
+                        .map { it.nickname }
+                        .filter { it != myNickname }
+                        .toSet()
 
-                    // 온라인 사용자의 배신 메시지 필터링
+                    // 다른 온라인 사용자의 최근 배신 메시지만 필터링
+                    // (네트워크 일시 끊김으로 인한 잘못된 배신 메시지 숨김)
+                    // 본인의 배신 메시지는 항상 표시 (재접속 시 배신 메시지 확인 가능)
+                    val currentTime = System.currentTimeMillis()
                     val filteredMessages = firebaseMessages.filter { message ->
                         if (message.isSystemMessage && message.message.contains("배신했습니다")) {
-                            // 배신 메시지에서 닉네임 추출 후 온라인 여부 확인
-                            val isOnlineUserBetrayal = onlineNicknames.any { nickname ->
-                                message.message.contains(nickname)
+                            // 본인의 배신 메시지는 항상 표시
+                            if (message.message.contains(myNickname)) {
+                                true
+                            } else {
+                                // 다른 사용자의 배신 메시지: 10초 이상 지났으면 표시
+                                val messageAge = currentTime - message.timestamp
+                                if (messageAge > 10_000) {
+                                    true
+                                } else {
+                                    // 최근 배신 메시지: 온라인 사용자 것은 필터링
+                                    val isOnlineUserBetrayal = otherOnlineNicknames.any { nickname ->
+                                        message.message.contains(nickname)
+                                    }
+                                    !isOnlineUserBetrayal
+                                }
                             }
-                            !isOnlineUserBetrayal  // 온라인 사용자의 배신 메시지는 제외
                         } else {
                             true  // 다른 메시지는 유지
                         }
@@ -853,6 +883,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * 환영 메시지 전송 (계급 제한 없이 이모지 사용 가능)
+     */
+    fun sendWelcomeMessage() {
+        viewModelScope.launch {
+            val state = _uiState.value
+            if (!state.isInChat) return@launch
+
+            // 환영 메시지 (계급 무관하게 이모지 포함, 줄바꿈 포함)
+            val welcomeText = "[emoji:101]" + "\n" + "환영한다!"
+
+            val message = ChatMessage(
+                userId = state.userId,
+                nickname = state.nickname,
+                message = welcomeText,
+                rank = EliteRank.fromDuration(state.sessionDuration).name
+            )
+            chatRepository.sendMessage(message)
+
+            // 콤보 업데이트
+            updateCombo()
+        }
+    }
 
     fun setReplyingTo(message: ChatMessage) {
         _uiState.update { it.copy(replyingTo = message) }
@@ -1043,7 +1096,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             // 퇴장 시스템 메시지 전송 (관리자가 아닌 경우)
             if (!wasAdminMode) {
                 try {
-                    chatRepository.sendSystemMessage("${state.nickname} 전우가 퇴장했습니다")
+                    chatRepository.sendSystemMessage("${state.nickname} 전우가 조금 전 전우회를 배신했습니다!")
                     android.util.Log.d("MainViewModel", "퇴장 메시지 전송 완료: ${state.nickname}")
                 } catch (e: Exception) {
                     android.util.Log.e("MainViewModel", "퇴장 메시지 전송 실패", e)
@@ -1135,20 +1188,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
+        // 띄어쓰기 제거
+        val cleanedNickname = newNickname.replace(" ", "").replace("\t", "").replace("\n", "").trim()
+
         // 닉네임 필터링
-        val filterResult = ContentFilter.filterNickname(newNickname)
+        val filterResult = ContentFilter.filterNickname(cleanedNickname)
         if (!filterResult.isAllowed) {
             _uiState.update { it.copy(filterErrorMessage = filterResult.reason) }
             return
         }
 
         viewModelScope.launch {
-            preferences.setNickname(newNickname)
+            preferences.setNickname(cleanedNickname)
 
             // 채팅 중이면 Firebase도 업데이트
             val state = _uiState.value
             if (state.isInChat) {
-                chatRepository.updateUserNickname(state.userId, newNickname)
+                chatRepository.updateUserNickname(state.userId, cleanedNickname)
             }
         }
     }

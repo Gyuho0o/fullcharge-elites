@@ -377,7 +377,9 @@ class MainActivity : ComponentActivity() {
                         // 실시간 합류/퇴장 카운트
                         recentJoinCount = uiState.recentJoinCount,
                         recentLeaveCount = uiState.recentLeaveCount,
-                        showJoinLeaveIndicator = uiState.showJoinLeaveIndicator
+                        showJoinLeaveIndicator = uiState.showJoinLeaveIndicator,
+                        // 환영 메시지
+                        onSendWelcomeMessage = { viewModel.sendWelcomeMessage() }
                     )
                 }
                 AppScreen.EXILE -> {

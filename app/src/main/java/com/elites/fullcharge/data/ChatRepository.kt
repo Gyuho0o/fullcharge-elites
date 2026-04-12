@@ -142,17 +142,39 @@ class ChatRepository {
                 // 입장 후 메시지: 모두 표시 (입장 시점 포함)
                 val messagesAfterJoin = sortedMessages.filter { it.timestamp >= joinedAt }
 
-                val filteredMessages = (messagesBeforeJoin + messagesAfterJoin)
-                    .distinctBy { it.id }
-                    .sortedWith(compareBy<ChatMessage> { it.timestamp }
-                        .thenBy {
-                            // 같은 타임스탬프일 때: 퇴장 < 합류 순서 보장
+                // 같은 사용자의 배신→합류 메시지 순서 보정
+                // (앱 재실행 시 합류가 먼저 전송되고, 이전 세션의 onDisconnect가 늦게 발동하는 경우)
+                val allMessages = (messagesBeforeJoin + messagesAfterJoin).distinctBy { it.id }
+
+                val filteredMessages = allMessages
+                    .sortedWith { msg1, msg2 ->
+                        // 기본: 타임스탬프 순
+                        val timeDiff = msg1.timestamp.compareTo(msg2.timestamp)
+
+                        // 5초 이내의 시스템 메시지는 특별 처리
+                        val isCloseInTime = kotlin.math.abs(msg1.timestamp - msg2.timestamp) < 5000
+                        val bothSystemMessages = msg1.isSystemMessage && msg2.isSystemMessage
+
+                        if (isCloseInTime && bothSystemMessages) {
+                            // 같은 닉네임이 포함된 배신/합류 메시지 순서 보정
+                            val msg1IsBetrayal = msg1.message.contains("배신")
+                            val msg1IsJoin = msg1.message.contains("합류")
+                            val msg2IsBetrayal = msg2.message.contains("배신")
+                            val msg2IsJoin = msg2.message.contains("합류")
+
                             when {
-                                it.message.contains("퇴장") -> 0
-                                it.message.contains("합류") -> 1
-                                else -> 2
+                                // 배신이 합류보다 먼저 와야 함
+                                msg1IsBetrayal && msg2IsJoin -> -1
+                                msg1IsJoin && msg2IsBetrayal -> 1
+                                // 강등 메시지는 합류 다음에
+                                msg1.message.contains("강등") && msg2IsJoin -> 1
+                                msg2.message.contains("강등") && msg1IsJoin -> -1
+                                else -> timeDiff
                             }
-                        })
+                        } else {
+                            timeDiff
+                        }
+                    }
 
                 android.util.Log.d("ChatRepository", "Filtered messages: ${filteredMessages.size} (before: ${messagesBeforeJoin.size}, after: ${messagesAfterJoin.size})")
 
@@ -433,7 +455,7 @@ class ChatRepository {
             "id" to messageKey,
             "userId" to "SYSTEM",
             "nickname" to "시스템",
-            "message" to "${nickname} 전우가 배터리 관리 소홀로 전우회를 배신했습니다",
+            "message" to "${nickname} 전우가 조금 전 전우회를 배신했습니다!",
             "timestamp" to com.google.firebase.database.ServerValue.TIMESTAMP,
             "rank" to "TRAINEE",
             "isSystemMessage" to true

@@ -22,8 +22,8 @@ android {
         applicationId = "com.elites.fullcharge"
         minSdk = 26
         targetSdk = 35
-        versionCode = 55
-        versionName = "1.4.23"
+        versionCode = 56
+        versionName = "1.4.24"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -73,6 +73,16 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+
+    // ABI 분리로 APK 크기 최적화
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a")
+            isUniversalApk = true  // 모든 ABI 포함 APK도 생성
+        }
+    }
 }
 
 dependencies {
@@ -80,7 +90,6 @@ dependencies {
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.2")
     implementation("androidx.activity:activity-compose:1.8.1")
-    implementation("androidx.fragment:fragment-ktx:1.6.2")
 
     // Compose
     implementation(platform("androidx.compose:compose-bom:2023.10.01"))
@@ -89,9 +98,6 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.animation:animation")
-
-    // Navigation
-    implementation("androidx.navigation:navigation-compose:2.7.5")
 
     // Firebase
     implementation(platform("com.google.firebase:firebase-bom:32.6.0"))

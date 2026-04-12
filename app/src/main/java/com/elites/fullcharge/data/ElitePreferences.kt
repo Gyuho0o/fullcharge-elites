@@ -406,6 +406,7 @@ class ElitePreferences(private val context: Context) {
             "고양이", "강아지", "토끼", "햄스터", "판다",
             "펭귄", "북극곰", "수달", "라쿤", "다람쥐"
         )
-        return "${adjectives.random()} ${nouns.random()}"
+        // 띄어쓰기 없이 연결
+        return "${adjectives.random()}${nouns.random()}"
     }
 }
