@@ -74,15 +74,16 @@ android {
         }
     }
 
-    // ABI 분리로 APK 크기 최적화
-    splits {
-        abi {
-            isEnable = true
-            reset()
-            include("arm64-v8a", "armeabi-v7a")
-            isUniversalApk = true  // 모든 ABI 포함 APK도 생성
-        }
-    }
+    // ABI 분리 - APK 직접 배포 시에만 사용 (AAB는 Play Store가 자동 처리)
+    // AAB 빌드 시 충돌하므로 비활성화
+    // splits {
+    //     abi {
+    //         isEnable = true
+    //         reset()
+    //         include("arm64-v8a", "armeabi-v7a")
+    //         isUniversalApk = true
+    //     }
+    // }
 
     // Lint 설정 - 릴리스 빌드 시 에러 무시
     lint {
