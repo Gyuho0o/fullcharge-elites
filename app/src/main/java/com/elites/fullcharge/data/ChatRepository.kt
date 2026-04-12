@@ -130,18 +130,12 @@ class ChatRepository {
                     android.util.Log.d("ChatRepository", "Message: id=${msg.id}, timestamp=${msg.timestamp}, isSystem=${msg.isSystemMessage}, text=${msg.message.take(30)}")
                 }
 
-                // 입장 전 메시지: 합류/퇴장 알림 시스템 메시지만 제외하고 최근 50개
+                // 입장 전 메시지: 최근 50개 (모든 시스템 메시지 포함)
                 val messagesBeforeJoin = if (joinedAt <= 0) {
                     emptyList()
                 } else {
                     sortedMessages
-                        .filter { msg ->
-                            msg.timestamp < joinedAt &&
-                            // 합류/퇴장 알림 시스템 메시지만 제외 (배신 메시지는 긴급 알림이므로 표시)
-                            !(msg.isSystemMessage && (msg.message.contains("합류했습니다") ||
-                                                       msg.message.contains("퇴장했습니다") ||
-                                                       msg.message.contains("복귀했습니다")))
-                        }
+                        .filter { msg -> msg.timestamp < joinedAt }
                         .takeLast(50)
                 }
 

@@ -24,8 +24,8 @@ object TypingSoundUtil {
             lastSoundTime = currentTime
 
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
-            // 볼륨 1.0f = 최대 (시스템 미디어 볼륨 기준)
-            audioManager?.playSoundEffect(AudioManager.FX_KEYPRESS_STANDARD, 1.0f)
+            // 시스템 볼륨에 연동 (별도 볼륨 지정 없음)
+            audioManager?.playSoundEffect(AudioManager.FX_KEYPRESS_STANDARD)
         } catch (e: Exception) {
             // 효과음 재생 실패 시 무시 (크래시 방지)
         }

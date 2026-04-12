@@ -1,0 +1,55 @@
+name: Deploy to Play Store
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: true
+
+      - name: Decode Keystore
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > app/keystore.jks
+
+      - name: Create key.properties
+        run: |
+          echo "storeFile=keystore.jks" > app/key.properties
+          echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}" >> app/key.properties
+          echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> app/key.properties
+          echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> app/key.properties
+
+      - name: Create Google Play service account key
+        run: |
+          echo "${{ secrets.PLAY_STORE_JSON }}" > fastlane/play-store-key.json
+
+      - name: Build Release AAB
+        run: ./gradlew bundleRelease
+
+      - name: Install Fastlane
+        run: |
+          cd fastlane
+          gem install bundler
+          bundle install
+
+      - name: Deploy to Play Store (Internal Testing)
+        run: |
+          cd fastlane
+          bundle exec fastlane deploy

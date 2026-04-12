@@ -44,6 +44,12 @@ captures/
 # Keystore files
 *.jks
 *.keystore
+key.properties
+
+# Fastlane
+fastlane/play-store-key.json
+fastlane/report.xml
+fastlane/README.md
 
 # External native build folder generated in Android Studio 2.2 and later
 .externalNativeBuild
