@@ -3,6 +3,7 @@ package com.elites.fullcharge.ui.screens
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -326,6 +327,8 @@ fun ChatScreen(
                 },
                 currentRank = currentRank,
                 onEmojiClick = { showEmojiPicker = true },
+                onlineUsers = onlineUsers,
+                currentUserId = currentUserId,
                 modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars)
             )
         }
@@ -1734,15 +1737,22 @@ private fun MessageInputSection(
     onSend: () -> Unit,
     currentRank: EliteRank = EliteRank.TRAINEE,
     onEmojiClick: () -> Unit = {},
+    onlineUsers: List<EliteUser> = emptyList(),
+    currentUserId: String = "",
     modifier: Modifier = Modifier
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val hasText = value.isNotBlank()
 
+    // 멘션 드롭다운 상태
+    var showMentionDropdown by remember { mutableStateOf(false) }
+    var mentionQuery by remember { mutableStateOf("") }
+    var mentionStartIndex by remember { mutableStateOf(-1) }
+
     // 이전 텍스트 길이 추적 (새 글자 입력 감지용)
     var previousLength by remember { mutableStateOf(0) }
 
-    // 값이 바뀔 때 햅틱 피드백 + 타이핑 효과음 처리
+    // @ 감지 및 멘션 처리
     val wrappedOnValueChange: (String) -> Unit = { newValue ->
         // 글자가 추가되거나 삭제됐을 때 효과
         if (newValue.length != previousLength) {
@@ -1750,7 +1760,36 @@ private fun MessageInputSection(
             context.hapticFeedback()
         }
         previousLength = newValue.length
+
+        // @ 감지
+        val lastAtIndex = newValue.lastIndexOf('@')
+        if (lastAtIndex >= 0) {
+            val textAfterAt = newValue.substring(lastAtIndex + 1)
+            // @ 뒤에 공백이 없으면 멘션 중
+            if (!textAfterAt.contains(' ') && !textAfterAt.contains('\n')) {
+                showMentionDropdown = true
+                mentionStartIndex = lastAtIndex
+                mentionQuery = textAfterAt.lowercase()
+            } else {
+                showMentionDropdown = false
+                mentionStartIndex = -1
+                mentionQuery = ""
+            }
+        } else {
+            showMentionDropdown = false
+            mentionStartIndex = -1
+            mentionQuery = ""
+        }
+
         onValueChange(newValue)
+    }
+
+    // 멘션할 수 있는 사용자 목록 (본인 제외, 검색어 필터링)
+    val filteredUsers = remember(onlineUsers, mentionQuery, currentUserId) {
+        onlineUsers
+            .filter { it.userId != currentUserId }
+            .filter { mentionQuery.isEmpty() || it.nickname.lowercase().contains(mentionQuery) }
+            .take(5) // 최대 5명만 표시
     }
 
     Surface(
@@ -1758,6 +1797,65 @@ private fun MessageInputSection(
         color = CardBlack.copy(alpha = 0.5f)  // v0: bg-card/50
     ) {
         Column {
+            // 멘션 드롭다운
+            AnimatedVisibility(
+                visible = showMentionDropdown && filteredUsers.isNotEmpty(),
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp),
+                    color = CardBlack,
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, BorderMuted.copy(alpha = 0.5f))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(4.dp)
+                    ) {
+                        filteredUsers.forEach { user ->
+                            val rank = EliteRank.fromDuration(user.sessionDuration)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .clickable {
+                                        // 멘션 자동 완성
+                                        if (mentionStartIndex >= 0) {
+                                            val beforeMention = value.substring(0, mentionStartIndex)
+                                            val newText = "$beforeMention@${user.nickname} "
+                                            onValueChange(newText)
+                                            showMentionDropdown = false
+                                            mentionStartIndex = -1
+                                            mentionQuery = ""
+                                        }
+                                    }
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                // 계급장
+                                RankInsignia(rank = rank, size = 20.dp)
+                                // 닉네임
+                                Text(
+                                    text = user.nickname,
+                                    color = ForegroundWhite,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                // 계급명
+                                Text(
+                                    text = rank.koreanName,
+                                    color = ForegroundMuted,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             // Divider (v0: border-t border-border/50)
             Box(
                 modifier = Modifier

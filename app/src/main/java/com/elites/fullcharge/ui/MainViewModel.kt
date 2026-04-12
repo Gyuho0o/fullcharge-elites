@@ -319,19 +319,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         batteryManager.updateFromIntent(intent)
     }
 
-    fun enterChat() {
+    fun enterChat(forceNewSession: Boolean = false) {
         val state = _uiState.value
         // UI에서 버튼이 활성화된 상태로 클릭됐으면 입장 허용
         // (isElite 체크는 UI에서 이미 함)
 
+        // "새로 시작" 선택 시 설정된 플래그 확인
+        val actualForceNew = forceNewSession || shouldForceNewSession
+        shouldForceNewSession = false  // 플래그 리셋
+
         viewModelScope.launch {
             val currentTime = System.currentTimeMillis()
 
-            // 입장 시간 설정 (이 시간 이후 메시지만 표시)
+            // 입장 시간 설정 (이 시간 이후 메시지만 표시 - 합류 메시지 전에 설정)
             chatRepository.setJoinedTime(currentTime)
 
-            // Firebase에 입장 등록 (기존 세션이 있으면 유지됨)
-            val sessionStartTime = chatRepository.joinChat(state.userId, state.nickname)
+            // Firebase에 입장 등록 (actualForceNew면 기존 세션 무시)
+            val sessionStartTime = chatRepository.joinChat(
+                userId = state.userId,
+                nickname = state.nickname,
+                forceNewSession = actualForceNew
+            )
 
             // 새 세션인지 확인 (세션 시작 시간이 현재와 같으면 새 세션)
             val isNewSession = sessionStartTime == currentTime ||
@@ -480,10 +488,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // "새로 시작" 선택 시 다음 enterChat에서 새 세션 강제 시작
+    private var shouldForceNewSession = false
+
     /**
      * 복구 가능한 세션 포기 (광고 안 보고 그냥 입장)
      */
     fun dismissRestorableSession() {
+        shouldForceNewSession = true  // 다음 enterChat에서 새 세션 강제
         viewModelScope.launch {
             preferences.clearRestorableSession()
         }
@@ -1014,17 +1026,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val state = _uiState.value
             val wasAdminMode = state.isAdminMode
 
-            // 관리자가 아닌 경우만 역대 기록 업데이트
+            // 관리자가 아닌 경우만 역대 기록 업데이트 및 세션 복구용 저장
             if (!wasAdminMode && state.sessionDuration > 0) {
                 chatRepository.updateAllTimeRecord(
                     userId = state.userId,
                     nickname = state.nickname,
                     durationMillis = state.sessionDuration
                 )
+                // 자발적 퇴장 시에도 세션 복구용으로 저장 (재접속 시 계급 복구 모달 표시)
+                preferences.saveSessionForRestore(state.sessionDuration)
             }
 
-            // 자발적 퇴장 시에는 세션 복구용으로 저장하지 않음 (배터리 소진으로 추방당한 경우만 저장)
-            // 퇴장 시스템 메시지는 확장성 문제로 제거 - 플로팅 UI로 실시간 카운트만 표시
+            // 퇴장 시스템 메시지 전송 (관리자가 아닌 경우)
+            if (!wasAdminMode) {
+                chatRepository.sendSystemMessage("${state.nickname} 전우가 퇴장했습니다")
+            }
 
             // FCM 토큰 삭제
             unregisterFcmToken(state.userId)

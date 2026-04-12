@@ -130,21 +130,29 @@ class ChatRepository {
                     android.util.Log.d("ChatRepository", "Message: id=${msg.id}, timestamp=${msg.timestamp}, isSystem=${msg.isSystemMessage}, text=${msg.message.take(30)}")
                 }
 
-                // 입장 전 메시지: 최근 50개 (모든 시스템 메시지 포함)
+                // 입장 전 메시지: 최근 50개 (같은 밀리초 메시지도 포함하기 위해 <= 사용)
                 val messagesBeforeJoin = if (joinedAt <= 0) {
                     emptyList()
                 } else {
                     sortedMessages
-                        .filter { msg -> msg.timestamp < joinedAt }
+                        .filter { msg -> msg.timestamp <= joinedAt }
                         .takeLast(50)
                 }
 
-                // 입장 후 메시지: 모두 표시
+                // 입장 후 메시지: 모두 표시 (입장 시점 포함)
                 val messagesAfterJoin = sortedMessages.filter { it.timestamp >= joinedAt }
 
                 val filteredMessages = (messagesBeforeJoin + messagesAfterJoin)
                     .distinctBy { it.id }
-                    .sortedBy { it.timestamp }
+                    .sortedWith(compareBy<ChatMessage> { it.timestamp }
+                        .thenBy {
+                            // 같은 타임스탬프일 때: 퇴장 < 합류 순서 보장
+                            when {
+                                it.message.contains("퇴장") -> 0
+                                it.message.contains("합류") -> 1
+                                else -> 2
+                            }
+                        })
 
                 android.util.Log.d("ChatRepository", "Filtered messages: ${filteredMessages.size} (before: ${messagesBeforeJoin.size}, after: ${messagesAfterJoin.size})")
 
@@ -319,13 +327,15 @@ class ChatRepository {
     /**
      * 채팅방 입장
      * @param forceSessionStartTime 세션 시작 시간을 강제로 설정 (복구 모드용)
+     * @param forceNewSession true면 기존 세션 무시하고 새로 시작
      * @return 실제 적용된 sessionStartTime
      */
     suspend fun joinChat(
         userId: String,
         nickname: String,
         isAdmin: Boolean = false,
-        forceSessionStartTime: Long? = null
+        forceSessionStartTime: Long? = null,
+        forceNewSession: Boolean = false
     ): Long {
         // 재연결 시 핸들러 재설정을 위해 사용자 정보 저장
         if (!isAdmin) {
@@ -338,6 +348,9 @@ class ChatRepository {
         val sessionStartTime: Long = when {
             // 강제 설정된 시간이 있으면 사용 (복구 모드)
             forceSessionStartTime != null -> forceSessionStartTime
+
+            // 새 세션 강제 시작
+            forceNewSession -> currentTime
 
             else -> {
                 // 기존 사용자 정보 확인 (세션 유지를 위해)
@@ -373,45 +386,12 @@ class ChatRepository {
         )
         usersRef.child(userId).setValue(user).await()
 
-        // 재접속 시 최근 1분 이내의 본인 배신 메시지 삭제 (앱 재빌드/재실행 시 onDisconnect가 발동되어 생성된 메시지)
-        if (!isAdmin) {
-            cleanupRecentBetrayalMessage(nickname, currentTime)
-        }
-
         // 관리자가 아닌 경우에만 연결 끊김 핸들러 설정
         if (!isAdmin) {
             setupDisconnectHandlers(userId, nickname)
         }
 
         return sessionStartTime
-    }
-
-    /**
-     * 재접속 시 최근 배신 메시지 정리
-     * 앱 재빌드/재실행 시 onDisconnect가 발동되어 배신 메시지가 생성될 수 있음
-     * 5분 이내의 본인 배신 메시지를 삭제
-     */
-    private suspend fun cleanupRecentBetrayalMessage(nickname: String, currentTime: Long) {
-        try {
-            val fiveMinutesAgo = currentTime - 5 * 60 * 1000
-            val recentMessages = messagesRef
-                .orderByChild("timestamp")
-                .startAt(fiveMinutesAgo.toDouble())
-                .get()
-                .await()
-
-            recentMessages.children.forEach { snapshot ->
-                val message = snapshot.child("message").getValue(String::class.java) ?: return@forEach
-                val isSystem = snapshot.child("isSystemMessage").getValue(Boolean::class.java) ?: false
-
-                // 본인의 배신 메시지인 경우 삭제
-                if (isSystem && message.contains(nickname) && message.contains("배신했습니다")) {
-                    snapshot.ref.removeValue().await()
-                }
-            }
-        } catch (e: Exception) {
-            // 실패해도 무시 (치명적이지 않음)
-        }
     }
 
     /**

@@ -98,7 +98,10 @@ fun GatekeeperScreen(
             onStartFresh = {
                 showRestoreDialog = false
                 onDismissRestore()
-                onEnterPortal()
+                // 100% 충전 상태일 때만 입장 (아니면 모달만 닫힘)
+                if (isElite) {
+                    onEnterPortal()
+                }
             },
             onDismiss = { showRestoreDialog = false }
         )
