@@ -1093,6 +1093,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 preferences.saveSessionForRestore(state.sessionDuration)
             }
 
+            // 중요: onDisconnect 핸들러를 먼저 취소해야 이중 메시지 전송 방지
+            // (수동 메시지 전송 중 네트워크 끊김 시 onDisconnect 발동 방지)
+            if (!wasAdminMode) {
+                try {
+                    chatRepository.cancelDisconnectHandlers(state.userId)
+                    android.util.Log.d("MainViewModel", "onDisconnect 핸들러 취소 완료")
+                } catch (e: Exception) {
+                    android.util.Log.e("MainViewModel", "onDisconnect 핸들러 취소 실패", e)
+                }
+            }
+
             // 퇴장 시스템 메시지 전송 (관리자가 아닌 경우)
             if (!wasAdminMode) {
                 try {

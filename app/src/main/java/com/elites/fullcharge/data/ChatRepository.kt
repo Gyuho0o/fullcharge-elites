@@ -232,10 +232,26 @@ class ChatRepository {
     /**
      * 재연결 시 onDisconnect 핸들러 재설정
      * 네트워크 끊김으로 배신 메시지가 전송되었을 수 있으므로 다시 설정
+     *
+     * 중요: 이전 핸들러가 발동되어 배신 메시지가 이미 전송된 경우,
+     * 새 핸들러를 설정하면 또 끊길 때 중복 메시지가 발생함.
+     * 따라서 배신 메시지가 이미 존재하면 새 핸들러를 설정하지 않음.
      */
     suspend fun resetDisconnectHandlersOnReconnect() {
         val userId = currentUserId ?: return
         val nickname = currentNickname ?: return
+
+        // 기존 배신 메시지가 이미 전송되었는지 확인
+        val messageAlreadySent = disconnectMessageKey?.let { key ->
+            try {
+                val snapshot = messagesRef.child(key).get().await()
+                snapshot.exists()
+            } catch (e: Exception) {
+                false
+            }
+        } ?: false
+
+        android.util.Log.d("ChatRepository", "resetDisconnectHandlersOnReconnect: messageAlreadySent=$messageAlreadySent, key=$disconnectMessageKey")
 
         // 기존 핸들러 취소 (이미 발동되었을 수 있음)
         try {
@@ -256,7 +272,16 @@ class ChatRepository {
         // 온라인 상태 복구
         usersRef.child(userId).child("isOnline").setValue(true).await()
 
-        // 새로운 핸들러 설정
+        // 배신 메시지가 이미 전송된 경우: 새 핸들러 설정하지 않음
+        // (같은 세션에서 중복 배신 메시지 방지)
+        // 사용자가 다시 입장하려면 leaveChat → enterChat 해야 함
+        if (messageAlreadySent) {
+            android.util.Log.d("ChatRepository", "배신 메시지가 이미 전송됨, 새 핸들러 설정 안 함")
+            disconnectMessageKey = null
+            return
+        }
+
+        // 새로운 핸들러 설정 (배신 메시지가 전송되지 않은 경우에만)
         setupDisconnectHandlers(userId, nickname)
     }
 
@@ -425,9 +450,12 @@ class ChatRepository {
      * - 앱 강제 종료, 네트워크 끊김 등 모든 상황에서 동작
      */
     private suspend fun setupDisconnectHandlers(userId: String, nickname: String) {
+        android.util.Log.d("ChatRepository", "setupDisconnectHandlers 시작: userId=$userId, nickname=$nickname")
+
         // 기존 핸들러가 있으면 먼저 취소 (중복 등록 방지)
         try {
             disconnectMessageKey?.let { existingKey ->
+                android.util.Log.d("ChatRepository", "기존 핸들러 취소 시도: key=$existingKey")
                 messagesRef.child(existingKey)
                     .onDisconnect()
                     .cancel()
@@ -439,6 +467,7 @@ class ChatRepository {
                 .await()
         } catch (e: Exception) {
             // 기존 핸들러가 없거나 이미 발동된 경우 무시
+            android.util.Log.d("ChatRepository", "기존 핸들러 취소 실패 (이미 발동됨): ${e.message}")
         }
 
         // 1. 온라인 상태를 false로 설정
@@ -450,6 +479,7 @@ class ChatRepository {
         // 2. 퇴장 메시지 설정 (미리 키 생성)
         val messageKey = messagesRef.push().key ?: return
         disconnectMessageKey = messageKey
+        android.util.Log.d("ChatRepository", "새 onDisconnect 핸들러 설정: key=$messageKey")
 
         val leaveMessage = mapOf(
             "id" to messageKey,
@@ -465,25 +495,36 @@ class ChatRepository {
             .onDisconnect()
             .setValue(leaveMessage)
             .await()
+
+        android.util.Log.d("ChatRepository", "setupDisconnectHandlers 완료")
     }
 
     /**
      * 정상 종료 시 연결 끊김 핸들러 취소
      */
     suspend fun cancelDisconnectHandlers(userId: String) {
-        // onDisconnect 핸들러 취소
-        usersRef.child(userId).child("isOnline")
-            .onDisconnect()
-            .cancel()
-            .await()
+        android.util.Log.d("ChatRepository", "cancelDisconnectHandlers 시작: userId=$userId, key=$disconnectMessageKey")
 
-        disconnectMessageKey?.let { key ->
-            messagesRef.child(key)
+        // onDisconnect 핸들러 취소
+        try {
+            usersRef.child(userId).child("isOnline")
                 .onDisconnect()
                 .cancel()
                 .await()
+
+            disconnectMessageKey?.let { key ->
+                messagesRef.child(key)
+                    .onDisconnect()
+                    .cancel()
+                    .await()
+                android.util.Log.d("ChatRepository", "배신 메시지 핸들러 취소 완료: key=$key")
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("ChatRepository", "핸들러 취소 실패", e)
         }
+
         disconnectMessageKey = null
+        android.util.Log.d("ChatRepository", "cancelDisconnectHandlers 완료")
     }
 
     suspend fun leaveChat(
